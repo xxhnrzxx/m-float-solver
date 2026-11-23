@@ -1,0 +1,375 @@
+package com.trae.floatsolver;
+
+import android.app.Activity;
+import android.content.Intent;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.provider.Settings;
+import android.text.Editable;
+import android.text.InputType;
+import android.text.TextWatcher;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+public class MainActivity extends Activity {
+
+    private TextView statusView;
+    private EditText fBase, fModel, fKey;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        ScrollView sv = new ScrollView(this);
+        sv.setBackgroundColor(0xFFF4F5FA);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(20), dp(22), dp(20), dp(30));
+        sv.addView(root);
+        setContentView(sv);
+
+        TextView title = new TextView(this);
+        title.setText("悬浮答题");
+        title.setTextSize(23);
+        title.setTypeface(null, Typeface.BOLD);
+        title.setTextColor(0xFF14172B);
+        root.addView(title);
+
+        TextView sub = new TextView(this);
+        sub.setText("刷题、网课、看文档时，屏幕上会有一个 AI 小球。点一下：自动截图 → AI 直接在你当前界面给出答案，不用切屏。");
+        sub.setTextSize(13);
+        sub.setTextColor(0xFF6B7189);
+        sub.setLineSpacing(dp(3), 1f);
+        sub.setPadding(0, dp(6), 0, dp(14));
+        root.addView(sub);
+
+        statusView = new TextView(this);
+        statusView.setTextSize(13.5f);
+        statusView.setTextColor(0xFF3B3F57);
+        statusView.setLineSpacing(dp(6), 1f);
+        statusView.setBackground(round(0xFFFFFFFF, 14));
+        statusView.setPadding(dp(14), dp(12), dp(14), dp(12));
+        root.addView(statusView);
+
+        root.addView(section("第一步 权限"));
+        root.addView(primaryBtn("授予悬浮窗权限", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                try {
+                    startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:" + getPackageName())));
+                } catch (Throwable t) {
+                    toast("请到系统设置中手动开启悬浮窗");
+                }
+            }
+        }));
+        root.addView(ghostBtn("开启无障碍（用于自动截图）", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                try {
+                    startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                } catch (Throwable t) {
+                    toast("请到系统设置中手动开启无障碍");
+                }
+            }
+        }));
+
+        root.addView(section("第二步 启动"));
+        root.addView(primaryBtn("启动悬浮球", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!Settings.canDrawOverlays(MainActivity.this)) {
+                    toast("请先授予悬浮窗权限");
+                    return;
+                }
+                Intent i = new Intent(MainActivity.this, BubbleService.class);
+                startForegroundService(i);
+                toast("悬浮球已出现，可以回到刷题 App 了");
+                moveTaskToBack(true);
+            }
+        }));
+        root.addView(ghostBtn("停止悬浮球", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                stopService(new Intent(MainActivity.this, BubbleService.class));
+                toast("已停止");
+            }
+        }));
+
+        root.addView(section("外观"));
+        final String[] styleNames = {"不透明（紫色圆球）", "半透明（整球变淡）", "全透明（只有一个白色小 m）"};
+        RadioGroup rg = new RadioGroup(this);
+        rg.setOrientation(RadioGroup.VERTICAL);
+        for (int i = 0; i < styleNames.length; i++) {
+            RadioButton rb = new RadioButton(this);
+            rb.setId(200 + i);
+            rb.setText(styleNames[i]);
+            rb.setTextSize(14f);
+            rb.setTextColor(0xFF23263B);
+            rb.setPadding(dp(4), dp(6), 0, dp(6));
+            rg.addView(rb);
+        }
+        rg.check(200 + Prefs.style(this));
+        rg.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(RadioGroup group, int checkedId) {
+                int style = checkedId - 200;
+                Prefs.setStyle(MainActivity.this, style);
+                sendReload();
+                toast("外观：" + styleNames[style]);
+            }
+        });
+        root.addView(rg);
+
+        root.addView(section("自动模式"));
+        CheckBox auto = new CheckBox(this);
+        auto.setText("自动识别：不用点球，换题自动出答案");
+        auto.setTextSize(14f);
+        auto.setTextColor(0xFF23263B);
+        auto.setChecked(Prefs.autoOn(this));
+        auto.setPadding(dp(4), dp(8), 0, dp(8));
+        auto.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                Prefs.setAutoOn(MainActivity.this, isChecked);
+                sendReload();
+                toast(isChecked ? "自动模式已开启" : "自动模式已关闭");
+            }
+        });
+        root.addView(auto);
+
+        TextView secLabel = new TextView(this);
+        secLabel.setText("识别间隔（秒，2–60）");
+        secLabel.setTextSize(13f);
+        secLabel.setTextColor(0xFF5B6072);
+        secLabel.setPadding(0, dp(10), 0, dp(4));
+        root.addView(secLabel);
+
+        final EditText fSec = input("间隔秒数，默认 5", InputType.TYPE_CLASS_NUMBER);
+        fSec.setText(String.valueOf(Prefs.autoSec(this)));
+        fSec.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                try {
+                    int v = Integer.parseInt(s.toString().trim());
+                    if (v >= 2 && v <= 60) {
+                        Prefs.setAutoSec(MainActivity.this, v);
+                        sendReload();
+                    }
+                } catch (Throwable ignore) {
+                }
+            }
+        });
+        root.addView(fSec);
+
+        TextView autoTip = new TextView(this);
+        autoTip.setText("勾选后每隔设定秒数检测一次画面，检测到换题才重新请求，同题不重复烧钱。自动模式只把答案浮出来，不会替你点选项。");
+        autoTip.setTextSize(12.5f);
+        autoTip.setTextColor(0xFF7A809A);
+        autoTip.setLineSpacing(dp(3), 1f);
+        autoTip.setPadding(0, dp(6), 0, 0);
+        root.addView(autoTip);
+
+        root.addView(section("答案显示"));
+        CheckBox brief = new CheckBox(this);
+        brief.setText("只显示选项：答案字母 + 一句话理由 + 选项原文");
+        brief.setTextSize(14f);
+        brief.setTextColor(0xFF23263B);
+        brief.setChecked(Prefs.brief(this));
+        brief.setPadding(dp(4), dp(8), 0, dp(8));
+        brief.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                Prefs.setBrief(MainActivity.this, isChecked);
+                toast(isChecked ? "已切到只看选项" : "已切回完整解析");
+            }
+        });
+        root.addView(brief);
+
+        TextView briefTip = new TextView(this);
+        briefTip.setText("浮层顶部会显示大号答案角标，解析里的「答案：」那行标红加粗，省得在一段文字里找。");
+        briefTip.setTextSize(12.5f);
+        briefTip.setTextColor(0xFF7A809A);
+        briefTip.setLineSpacing(dp(3), 1f);
+        briefTip.setPadding(0, dp(6), 0, 0);
+        root.addView(briefTip);
+
+        root.addView(section("第三步 填 AI 接口（只需一次）"));
+        fBase = input("接口地址 Base URL，如 https://api.deepseek.com/v1",
+                InputType.TYPE_TEXT_VARIATION_URI);
+        fModel = input("模型名，如 deepseek-flash（需支持识图）", InputType.TYPE_CLASS_TEXT);
+        fKey = input("API Key", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        root.addView(fBase);
+        root.addView(fModel);
+        root.addView(fKey);
+        root.addView(primaryBtn("保存配置", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Prefs.save(MainActivity.this, fBase.getText().toString(),
+                        fModel.getText().toString(), fKey.getText().toString());
+                toast(Prefs.configured(MainActivity.this) ? "已保存" : "已保存，但三项都要填全");
+                updateStatus();
+            }
+        }));
+
+        TextView tip = new TextView(this);
+        tip.setText("推荐：DeepSeek deepseek-flash（支持识图，快且便宜）\n"
+                + "接口地址 https://api.deepseek.com/v1\n"
+                + "模型名 deepseek-flash\n\n"
+                + "用法：回到任何 App，点紫色「m」小球 → 屏幕自动截图并给出答案，答案浮在当前界面，可滚动、可复制、可拖到你喜欢的位置。\n"
+                + "长按小球可关闭悬浮球。");
+        tip.setTextSize(12.5f);
+        tip.setTextColor(0xFF7A809A);
+        tip.setLineSpacing(dp(3), 1f);
+        tip.setPadding(0, dp(16), 0, 0);
+        root.addView(tip);
+
+        if (Build.VERSION.SDK_INT >= 33) {
+            try {
+                requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 11);
+            } catch (Throwable ignore) {
+            }
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        String b = Prefs.base(this), m = Prefs.model(this), k = Prefs.key(this);
+        if (fBase != null && fBase.getText().length() == 0) fBase.setText(b);
+        if (fModel != null && fModel.getText().length() == 0) fModel.setText(m);
+        if (fKey != null && fKey.getText().length() == 0) fKey.setText(k);
+        updateStatus();
+    }
+
+    private void updateStatus() {
+        boolean overlay = Settings.canDrawOverlays(this);
+        boolean acc = isAccessibilityOn();
+        boolean cfg = Prefs.configured(this);
+        statusView.setText(
+                (overlay ? "已开启" : "未开启") + " · 悬浮窗权限\n"
+                        + (acc ? "已开启" : "未开启") + " · 无障碍（自动截图）\n"
+                        + (cfg ? "已填写" : "未填写") + " · AI 接口配置");
+        statusView.setTextColor(overlay && acc && cfg ? 0xFF15803D : 0xFFB45309);
+    }
+
+    private boolean isAccessibilityOn() {
+        try {
+            String s = Settings.Secure.getString(getContentResolver(),
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            if (s == null) return false;
+            String needle = getPackageName() + "/" + ShotService.class.getName();
+            return s.toLowerCase().contains(needle.toLowerCase());
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    }
+
+    /* ---------------- UI 小工具 ---------------- */
+
+    private int dp(float v) {
+        return Math.round(v * getResources().getDisplayMetrics().density);
+    }
+
+    private GradientDrawable round(int color, float radiusDp) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(color);
+        g.setCornerRadius(dp(radiusDp));
+        return g;
+    }
+
+    private TextView section(String text) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextSize(13);
+        t.setTypeface(null, Typeface.BOLD);
+        t.setTextColor(0xFF8A90A8);
+        t.setPadding(dp(4), dp(20), 0, dp(2));
+        return t;
+    }
+
+    private Button primaryBtn(String text, View.OnClickListener l) {
+        Button b = new Button(this);
+        b.setText(text);
+        b.setAllCaps(false);
+        b.setTextSize(15);
+        b.setTextColor(0xFFFFFFFF);
+        b.setBackground(round(0xFF4F46E5, 12));
+        b.setOnClickListener(l);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+        lp.topMargin = dp(9);
+        b.setLayoutParams(lp);
+        return b;
+    }
+
+    private Button ghostBtn(String text, View.OnClickListener l) {
+        Button b = new Button(this);
+        b.setText(text);
+        b.setAllCaps(false);
+        b.setTextSize(14.5f);
+        b.setTextColor(0xFF14172B);
+        b.setBackground(round(0xFFFFFFFF, 12));
+        b.setOnClickListener(l);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+        lp.topMargin = dp(9);
+        b.setLayoutParams(lp);
+        return b;
+    }
+
+    private EditText input(String hint, int type) {
+        EditText e = new EditText(this);
+        e.setHint(hint);
+        e.setHintTextColor(0xFFA6ABC0);
+        e.setTextSize(14);
+        e.setInputType(type);
+        e.setBackground(round(0xFFFFFFFF, 12));
+        e.setPadding(dp(14), dp(10), dp(14), dp(10));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(9);
+        e.setLayoutParams(lp);
+        return e;
+    }
+
+    /** 通知正在运行的悬浮球重新读取外观 / 自动模式设置 */
+    private void sendReload() {
+        if (BubbleService.RUNNING) {
+            Intent i = new Intent(this, BubbleService.class);
+            i.setAction("reload");
+            startService(i);
+        }
+    }
+
+    private void toast(String msg) {
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+    }
+}

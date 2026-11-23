@@ -1,0 +1,9 @@
+build/
+*.apk
+*.idsig
+*.aab
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+*.iml

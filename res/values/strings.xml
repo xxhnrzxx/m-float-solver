@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">悬浮答题</string>
+    <string name="acc_desc">用于在做题时自动截屏并请求 AI 解答</string>
+    <string name="acc_summary">点悬浮球时截取屏幕内容，仅发送给你配置的 AI 接口</string>
+</resources>
