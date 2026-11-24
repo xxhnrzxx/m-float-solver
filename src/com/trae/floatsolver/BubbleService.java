@@ -201,8 +201,8 @@ public class BubbleService extends Service {
                     }
                     case MotionEvent.ACTION_UP:
                         if (!moved) {
-                            if (System.currentTimeMillis() - downTime > 650) {
-                                toast("已关闭悬浮球，需要时从 App 重新开启");
+                            if (System.currentTimeMillis() - downTime > 2000) {
+                                toast("长按 2 秒，已关闭悬浮球");
                                 stopSelf();
                             } else {
                                 ask();

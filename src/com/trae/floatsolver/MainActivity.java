@@ -310,12 +310,33 @@ public class MainActivity extends Activity {
             }
         }));
 
+        final TextView testOut = new TextView(this);
+        testOut.setTextSize(12.5f);
+        testOut.setTextColor(0xFF4A4F68);
+        testOut.setBackground(roundBg(0xFFF7F8FC, 10));
+        testOut.setPadding(dp(12), dp(9), dp(12), dp(9));
+        testOut.setLineSpacing(dp(2), 1f);
+        testOut.setTextIsSelectable(true);
+        testOut.setVisibility(View.GONE);
+        final LinearLayout.LayoutParams testLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        testLp.topMargin = dp(9);
+        root.addView(testOut, testLp);
+
+        final Button testBtn = ghostBtn("测试连接（不截图，只发一句话）", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                testConnection(testOut, (Button) v);
+            }
+        });
+        root.addView(testBtn);
+
         TextView tip = new TextView(this);
         tip.setText("推荐：DeepSeek deepseek-flash（支持识图，快且便宜）\n"
                 + "接口地址 https://api.deepseek.com/v1\n"
                 + "模型名 deepseek-flash\n\n"
                 + "用法：回到任何 App，点紫色「m」小球 → 屏幕自动截图并给出答案，答案浮在当前界面，可滚动、可复制、可拖到你喜欢的位置。\n"
-                + "长按小球可关闭悬浮球。");
+                + "长按小球 2 秒可关闭悬浮球。");
         tip.setTextSize(12.5f);
         tip.setTextColor(0xFF7A809A);
         tip.setLineSpacing(dp(3), 1f);
@@ -394,7 +415,7 @@ public class MainActivity extends Activity {
 
         root.addView(section("关于"));
         TextView ver = new TextView(this);
-        ver.setText("版本 2.5");
+        ver.setText("版本 2.6");
         ver.setTextSize(13f);
         ver.setTextColor(0xFF7A809A);
         root.addView(ver);
@@ -555,6 +576,98 @@ public class MainActivity extends Activity {
         return g;
     }
 
+    private static String cut(String s, int n) {
+        if (s == null) return "";
+        return s.length() > n ? s.substring(0, n) + "…" : s;
+    }
+
+    /** 用当前填写的地址、模型、Key 发一句纯文字，验证接口通不通 */
+    private void testConnection(final TextView out, final Button btn) {
+        final String base = fBase.getText().toString().trim();
+        final String model = fModel.getText().toString().trim();
+        final String key = fKey.getText().toString().trim();
+        if (base.isEmpty() || model.isEmpty() || key.isEmpty()) {
+            toast("接口地址、模型名、Key 三项都要填");
+            return;
+        }
+        Prefs.save(this, base, model, key);
+        btn.setEnabled(false);
+        btn.setText("测试中…");
+        out.setVisibility(View.VISIBLE);
+        out.setTextColor(0xFF4A4F68);
+        out.setText("正在请求：\n" + base + "\n模型：" + model);
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String msg;
+                int color = 0xFFB45309;
+                String url = (base.endsWith("/") ? base : base + "/") + "chat/completions";
+                try {
+                    java.net.HttpURLConnection c =
+                            (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                    c.setConnectTimeout(20000);
+                    c.setReadTimeout(60000);
+                    c.setRequestMethod("POST");
+                    c.setDoOutput(true);
+                    c.setRequestProperty("Content-Type", "application/json");
+                    c.setRequestProperty("Authorization", "Bearer " + key);
+                    String body = "{\"model\":" + org.json.JSONObject.quote(model)
+                            + ",\"messages\":[{\"role\":\"user\",\"content\":\"你好\"}]"
+                            + ",\"max_tokens\":16}";
+                    java.io.OutputStream os = c.getOutputStream();
+                    os.write(body.getBytes("UTF-8"));
+                    os.close();
+
+                    int code = c.getResponseCode();
+                    java.io.InputStream is = (code >= 200 && code < 300)
+                            ? c.getInputStream() : c.getErrorStream();
+                    StringBuilder sb = new StringBuilder();
+                    if (is != null) {
+                        java.io.BufferedReader br = new java.io.BufferedReader(
+                                new java.io.InputStreamReader(is, "UTF-8"));
+                        String line;
+                        while ((line = br.readLine()) != null) sb.append(line);
+                        br.close();
+                    }
+                    String resp = sb.toString();
+                    if (code >= 200 && code < 300) {
+                        String content = "";
+                        try {
+                            content = new org.json.JSONObject(resp).getJSONArray("choices")
+                                    .getJSONObject(0).getJSONObject("message")
+                                    .optString("content", "");
+                        } catch (Throwable ignore) {
+                        }
+                        msg = "连接成功（HTTP 200）\n模型：" + model
+                                + "\n回复：" + (content.trim().isEmpty()
+                                ? cut(resp, 80) : cut(content.trim(), 80));
+                        color = 0xFF15803D;
+                    } else {
+                        msg = "连接失败 HTTP " + code + "\n地址：" + url
+                                + "\n模型：" + model + "\n" + cut(resp, 500);
+                    }
+                } catch (Throwable e) {
+                    msg = "连接失败：" + e.getClass().getSimpleName()
+                            + "\n" + cut(String.valueOf(e.getMessage()), 200)
+                            + "\n地址：" + url;
+                }
+
+                final String m = msg;
+                final int col = color;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        out.setTextColor(col);
+                        out.setText(m);
+                        btn.setEnabled(true);
+                        btn.setText("测试连接（不截图，只发一句话）");
+                    }
+                });
+            }
+        }).start();
+    }
+
     /** 读 GitHub Releases 最新版本号并和本地版本比较 */
     private void checkUpdate() {
         toast("正在检查…");
@@ -578,7 +691,7 @@ public class MainActivity extends Activity {
                         while ((line = br.readLine()) != null) sb.append(line);
                         br.close();
                         String tag = new org.json.JSONObject(sb.toString()).optString("tag_name", "");
-                        String now = "v2.4";
+                        String now = "v2.6";
                         if (tag.isEmpty()) {
                             result = "没读到版本号";
                         } else if (tag.equalsIgnoreCase(now)) {
