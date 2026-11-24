@@ -365,7 +365,11 @@ public class MainActivity extends Activity {
                     org.json.JSONObject o = arr.optJSONObject(i);
                     if (o == null) continue;
                     final String q = o.optString("q", "").trim();
-                    final String a = o.optString("a", "");
+                    String rawA = o.optString("a", "").trim();
+                    if (rawA.startsWith("答案：") || rawA.startsWith("答案:")) {
+                        rawA = rawA.substring(3).trim();
+                    }
+                    final String a = rawA;
 
                     LinearLayout card = new LinearLayout(MainActivity.this);
                     card.setOrientation(LinearLayout.VERTICAL);
@@ -438,7 +442,7 @@ public class MainActivity extends Activity {
 
         root.addView(section("关于"));
         TextView ver = new TextView(this);
-        ver.setText("版本 3.3");
+        ver.setText("版本 3.4");
         ver.setTextSize(13f);
         ver.setTextColor(0xFF7A809A);
         root.addView(ver);
@@ -714,7 +718,7 @@ public class MainActivity extends Activity {
                         while ((line = br.readLine()) != null) sb.append(line);
                         br.close();
                         String tag = new org.json.JSONObject(sb.toString()).optString("tag_name", "");
-                        String now = "v3.3";
+                        String now = "v3.4";
                         if (tag.isEmpty()) {
                             result = "没读到版本号";
                         } else if (tag.equalsIgnoreCase(now)) {

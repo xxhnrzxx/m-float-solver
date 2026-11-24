@@ -116,6 +116,10 @@ public class Prefs {
 
     public static void addHistory(Context c, String question, String answer) {
         if (answer == null || answer.trim().isEmpty()) return;
+        String a = answer.trim();
+        // 答案原文可能自带「答案：」，历史里会再拼一次前缀，先去掉
+        if (a.startsWith("答案：") || a.startsWith("答案:")) a = a.substring(3).trim();
+        if (a.isEmpty()) return;
         String q = question == null ? "" : question.trim();
         if (q.length() > 300) q = q.substring(0, 300);
         org.json.JSONArray old = history(c);
@@ -124,7 +128,7 @@ public class Prefs {
             out.put(new org.json.JSONObject()
                     .put("t", System.currentTimeMillis())
                     .put("q", q)
-                    .put("a", answer.trim()));
+                    .put("a", a));
             for (int i = 0; i < old.length() && out.length() < HISTORY_MAX; i++) {
                 out.put(old.get(i));
             }
