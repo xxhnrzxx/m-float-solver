@@ -612,16 +612,39 @@ public class BubbleService extends Service {
 
     /** 收尾：标红答案、存历史、写缓存；答案和原文对不上时自动复核一次 */
     private void finalizeAnswer() {
-        final String answer = panelText.getText().toString();
-        if (!retried && needRetry(answer)) {
-            retryAnswer(answer);
+        String answer = panelText.getText().toString();
+        String fixed = dedupeAnswer(answer);
+        if (!fixed.equals(answer)) setPanelText(fixed);
+        if (!retried && needRetry(fixed)) {
+            retryAnswer(fixed);
             return;
         }
-        updateBadge(answer);
+        updateBadge(fixed);
         highlightAnswer();
         fitPanelHeight();
-        Prefs.addHistory(this, lastText, answer);
-        if (lastText != null) cachePut(lastText, answer);
+        Prefs.addHistory(this, lastText, fixed);
+        if (lastText != null) cachePut(lastText, fixed);
+    }
+
+    /** 模型偶尔会给两个「答案：」行，只保留最后一个（一般是它最后核对的结论） */
+    private static String dedupeAnswer(String s) {
+        if (s == null) return "";
+        String[] lines = s.split("\n");
+        int last = -1;
+        int count = 0;
+        for (int i = 0; i < lines.length; i++) {
+            if (lines[i].trim().startsWith("答案：")) {
+                last = i;
+                count++;
+            }
+        }
+        if (count < 2) return s;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < lines.length; i++) {
+            if (i != last && lines[i].trim().startsWith("答案：")) continue;
+            sb.append(lines[i]).append('\n');
+        }
+        return sb.toString().trim();
     }
 
     /** 答案里的字母/选项原文和题干对不上，带着上一轮答案再问一次 */
