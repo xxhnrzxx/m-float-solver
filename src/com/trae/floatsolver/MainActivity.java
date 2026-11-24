@@ -145,7 +145,7 @@ public class MainActivity extends Activity {
         RadioGroup cropGroup = new RadioGroup(this);
         cropGroup.setOrientation(RadioGroup.VERTICAL);
         String[] cropNames = {"全屏（保留状态栏，最保险）", "裁掉状态栏和导航栏（推荐）",
-                "只取屏幕中间区域（题目在正中时最省）"};
+                "智能裁边（只裁空白处，题目满屏时不裁）"};
         for (int i = 0; i < cropNames.length; i++) {
             RadioButton rb = new RadioButton(this);
             rb.setText(cropNames[i]);
@@ -394,7 +394,7 @@ public class MainActivity extends Activity {
 
         root.addView(section("关于"));
         TextView ver = new TextView(this);
-        ver.setText("版本 2.2");
+        ver.setText("版本 2.3");
         ver.setTextSize(13f);
         ver.setTextColor(0xFF7A809A);
         root.addView(ver);
@@ -578,7 +578,7 @@ public class MainActivity extends Activity {
                         while ((line = br.readLine()) != null) sb.append(line);
                         br.close();
                         String tag = new org.json.JSONObject(sb.toString()).optString("tag_name", "");
-                        String now = "v2.2";
+                        String now = "v2.3";
                         if (tag.isEmpty()) {
                             result = "没读到版本号";
                         } else if (tag.equalsIgnoreCase(now)) {

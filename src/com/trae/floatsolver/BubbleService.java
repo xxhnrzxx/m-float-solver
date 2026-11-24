@@ -837,27 +837,17 @@ public class BubbleService extends Service {
 
     private String toDataUrl(Bitmap bmp) {
         int mode = Prefs.cropMode(this);
-        if (mode > 0) {
+        if (mode == 1) {
             int h = bmp.getHeight();
-            int w = bmp.getWidth();
-            int top;
-            int bottom;
-            int left = 0;
-            int right = w;
-            if (mode == 1) {
-                top = h * 6 / 100;
-                bottom = h * 95 / 100;
-            } else {
-                top = h * 12 / 100;
-                bottom = h * 88 / 100;
-                left = w * 4 / 100;
-                right = w * 96 / 100;
-            }
-            if (bottom - top > 100 && right - left > 100) {
-                Bitmap cut = Bitmap.createBitmap(bmp, left, top, right - left, bottom - top);
+            int top = h * 6 / 100;
+            int bottom = h * 95 / 100;
+            if (bottom - top > 100) {
+                Bitmap cut = Bitmap.createBitmap(bmp, 0, top, bmp.getWidth(), bottom - top);
                 bmp.recycle();
                 bmp = cut;
             }
+        } else if (mode == 2) {
+            bmp = trimBlank(bmp);
         }
         int w = bmp.getWidth();
         int h = bmp.getHeight();
@@ -870,6 +860,71 @@ public class BubbleService extends Service {
         scaled.compress(Bitmap.CompressFormat.JPEG, maxSide >= 1920 ? 92 : 88, bo);
         if (scaled != bmp) scaled.recycle();
         return "data:image/jpeg;base64," + Base64.encodeToString(bo.toByteArray(), Base64.NO_WRAP);
+    }
+
+    /**
+     * 智能裁边：从四周往里逐行/逐列扫描，只有整行（整列）几乎同色（纯空白）才裁掉。
+     * 题目铺满屏幕时第一行就是文字，一行都裁不掉，所以不会误切题干或选项。
+     */
+    private Bitmap trimBlank(Bitmap src) {
+        final int w = src.getWidth();
+        final int h = src.getHeight();
+        final int maxTop = h * 20 / 100;
+        final int maxBottom = h * 20 / 100;
+        final int maxSide = w * 8 / 100;
+
+        int[] line = new int[w];
+        int top = 0;
+        while (top < maxTop) {
+            src.getPixels(line, 0, w, 0, top, w, 1);
+            if (!isBlank(line, w)) break;
+            top++;
+        }
+        int bottom = h;
+        while (h - bottom < maxBottom) {
+            src.getPixels(line, 0, w, 0, bottom - 1, w, 1);
+            if (!isBlank(line, w)) break;
+            bottom--;
+        }
+
+        int[] col = new int[Math.max(1, bottom - top)];
+        int left = 0;
+        while (left < maxSide) {
+            src.getPixels(col, 0, 1, left, top, 1, bottom - top);
+            if (!isBlank(col, bottom - top)) break;
+            left++;
+        }
+        int right = w;
+        while (w - right < maxSide) {
+            src.getPixels(col, 0, 1, right - 1, top, 1, bottom - top);
+            if (!isBlank(col, bottom - top)) break;
+            right--;
+        }
+
+        if (bottom - top < 120 || right - left < 120) return src;
+        if (top == 0 && left == 0 && bottom == h && right == w) return src;
+        Bitmap cut = Bitmap.createBitmap(src, left, top, right - left, bottom - top);
+        src.recycle();
+        return cut;
+    }
+
+    /** 一行/一列采样后是否接近同一种颜色（空白边） */
+    private static boolean isBlank(int[] px, int len) {
+        if (len <= 0) return true;
+        int step = Math.max(1, len / 64);
+        int ref = px[0];
+        int r0 = (ref >> 16) & 0xFF;
+        int g0 = (ref >> 8) & 0xFF;
+        int b0 = ref & 0xFF;
+        for (int i = 0; i < len; i += step) {
+            int p = px[i];
+            if (Math.abs(((p >> 16) & 0xFF) - r0) > 14
+                    || Math.abs(((p >> 8) & 0xFF) - g0) > 14
+                    || Math.abs((p & 0xFF) - b0) > 14) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void openApp() {
