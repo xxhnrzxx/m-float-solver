@@ -671,12 +671,12 @@ public class BubbleService extends Service {
     private String toDataUrl(Bitmap bmp) {
         int w = bmp.getWidth();
         int h = bmp.getHeight();
-        float k = Math.min(1f, 1280f / Math.max(w, h));
+        float k = Math.min(1f, 1920f / Math.max(w, h));
         Bitmap scaled = k < 1f
                 ? Bitmap.createScaledBitmap(bmp, Math.round(w * k), Math.round(h * k), true)
                 : bmp;
         ByteArrayOutputStream bo = new ByteArrayOutputStream();
-        scaled.compress(Bitmap.CompressFormat.JPEG, 82, bo);
+        scaled.compress(Bitmap.CompressFormat.JPEG, 92, bo);
         if (scaled != bmp) scaled.recycle();
         return "data:image/jpeg;base64," + Base64.encodeToString(bo.toByteArray(), Base64.NO_WRAP);
     }
