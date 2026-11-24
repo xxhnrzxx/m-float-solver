@@ -62,7 +62,7 @@ src/com/trae/floatsolver/
   Tex.java            LaTeX → 纯文本
   Prefs.java          本地配置
 ```
-<img width="325" height="800" alt="9765d3d72d5d925032d197f33fce9acc" src="https://github.com/user-attachments/assets/4956b5dd-bddc-4da5-846e-3d82f419aee3" />
-<img width="350" height="800" alt="41031a8e6b75fcd0be38f8330e013c85" src="https://github.com/user-attachments/assets/63ca2f65-07c7-4a09-b605-33a3dbb8c009" />
-<img width="325" height="800" alt="71e145768ed43d073652b95fe1f197b0" src="https://github.com/user-attachments/assets/25d30a8b-dc6c-43b5-910f-891ebf7cfab4" />
+<img width="350" height="800" alt="9765d3d72d5d925032d197f33fce9acc" src="https://github.com/user-attachments/assets/4956b5dd-bddc-4da5-846e-3d82f419aee3" />
+<img width="400" height="800" alt="41031a8e6b75fcd0be38f8330e013c85" src="https://github.com/user-attachments/assets/63ca2f65-07c7-4a09-b605-33a3dbb8c009" />
+<img width="350" height="800" alt="71e145768ed43d073652b95fe1f197b0" src="https://github.com/user-attachments/assets/25d30a8b-dc6c-43b5-910f-891ebf7cfab4" />
 
