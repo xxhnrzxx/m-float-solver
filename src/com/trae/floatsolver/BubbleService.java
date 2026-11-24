@@ -532,6 +532,7 @@ public class BubbleService extends Service {
         final StringBuilder acc = new StringBuilder();
         ChatClient.ask(Prefs.base(this), Prefs.model(this), Prefs.key(this), dataUrl,
                 Prefs.brief(this),
+                Prefs.answerOnly(this),
                 new ChatClient.Sink() {
                     @Override
                     public void onDelta(String text) {

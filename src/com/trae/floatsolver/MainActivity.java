@@ -208,6 +208,21 @@ public class MainActivity extends Activity {
         });
         root.addView(brief);
 
+        CheckBox only = new CheckBox(this);
+        only.setText("只要答案：只回一行结论，不解释");
+        only.setTextSize(14f);
+        only.setTextColor(0xFF23263B);
+        only.setChecked(Prefs.answerOnly(this));
+        only.setPadding(dp(4), dp(8), 0, dp(8));
+        only.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                Prefs.setAnswerOnly(MainActivity.this, isChecked);
+                toast(isChecked ? "已切到只要答案" : "已切回上方模式");
+            }
+        });
+        root.addView(only);
+
         TextView briefTip = new TextView(this);
         briefTip.setText("浮层顶部会显示大号答案角标，解析里的「答案：」那行标红加粗，省得在一段文字里找。");
         briefTip.setTextSize(12.5f);

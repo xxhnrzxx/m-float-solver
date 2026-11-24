@@ -49,8 +49,14 @@ public class ChatClient {
             + "第三行「选项：」加正确选项的完整原文，如「选项：B. ①②④」，没有选项就省略这行。"
             + "绝对不要展开解题过程，不要寒暄，不要重复题目。";
 
+    /** 只要答案：一行结论，不解释 */
+    private static final String ONLY = "只回答答案，不要任何解释、过程、寒暄。"
+            + "输出格式固定一行：选择题写「答案：B. 选项原文」，填空或问答写「答案：结论」。"
+            + "题干看不清或有多道题时，只答最主要的那道，答不出就写「答案：看不清」。";
+
     public static void ask(final String baseUrl, final String model, final String apiKey,
-                           final String imageDataUrl, final boolean brief, final Sink sink) {
+                           final String imageDataUrl, final boolean brief, final boolean answerOnly,
+                           final Sink sink) {
         final Handler main = new Handler(Looper.getMainLooper());
         new Thread(new Runnable() {
             @Override
@@ -74,7 +80,8 @@ public class ChatClient {
                             .put("image_url", new JSONObject().put("url", imageDataUrl)));
 
                     JSONArray messages = new JSONArray();
-                    messages.put(new JSONObject().put("role", "system").put("content", brief ? BRIEF : SYSTEM));
+                    messages.put(new JSONObject().put("role", "system")
+                            .put("content", answerOnly ? ONLY : (brief ? BRIEF : SYSTEM)));
                     messages.put(new JSONObject().put("role", "user").put("content", content));
 
                     JSONObject body = new JSONObject()

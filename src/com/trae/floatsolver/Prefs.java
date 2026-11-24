@@ -75,4 +75,13 @@ public class Prefs {
     public static void setBrief(Context c, boolean on) {
         sp(c).edit().putBoolean("brief", on).apply();
     }
+
+    /** 只要答案：只回一行结论 */
+    public static boolean answerOnly(Context c) {
+        return sp(c).getBoolean("answerOnly", false);
+    }
+
+    public static void setAnswerOnly(Context c, boolean on) {
+        sp(c).edit().putBoolean("answerOnly", on).apply();
+    }
 }
