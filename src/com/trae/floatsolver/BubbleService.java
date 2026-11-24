@@ -836,23 +836,38 @@ public class BubbleService extends Service {
     }
 
     private String toDataUrl(Bitmap bmp) {
-        if (Prefs.cropBars(this)) {
-            int top = bmp.getHeight() * 6 / 100;
-            int bottom = bmp.getHeight() * 95 / 100;
-            if (bottom - top > 100) {
-                Bitmap cut = Bitmap.createBitmap(bmp, 0, top, bmp.getWidth(), bottom - top);
+        int mode = Prefs.cropMode(this);
+        if (mode > 0) {
+            int h = bmp.getHeight();
+            int w = bmp.getWidth();
+            int top;
+            int bottom;
+            int left = 0;
+            int right = w;
+            if (mode == 1) {
+                top = h * 6 / 100;
+                bottom = h * 95 / 100;
+            } else {
+                top = h * 12 / 100;
+                bottom = h * 88 / 100;
+                left = w * 4 / 100;
+                right = w * 96 / 100;
+            }
+            if (bottom - top > 100 && right - left > 100) {
+                Bitmap cut = Bitmap.createBitmap(bmp, left, top, right - left, bottom - top);
                 bmp.recycle();
                 bmp = cut;
             }
         }
         int w = bmp.getWidth();
         int h = bmp.getHeight();
-        float k = Math.min(1f, 1920f / Math.max(w, h));
+        int maxSide = Prefs.maxSide(this);
+        float k = Math.min(1f, maxSide / (float) Math.max(w, h));
         Bitmap scaled = k < 1f
                 ? Bitmap.createScaledBitmap(bmp, Math.round(w * k), Math.round(h * k), true)
                 : bmp;
         ByteArrayOutputStream bo = new ByteArrayOutputStream();
-        scaled.compress(Bitmap.CompressFormat.JPEG, 92, bo);
+        scaled.compress(Bitmap.CompressFormat.JPEG, maxSide >= 1920 ? 92 : 88, bo);
         if (scaled != bmp) scaled.recycle();
         return "data:image/jpeg;base64," + Base64.encodeToString(bo.toByteArray(), Base64.NO_WRAP);
     }

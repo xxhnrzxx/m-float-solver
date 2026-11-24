@@ -85,13 +85,22 @@ public class Prefs {
         sp(c).edit().putBoolean("answerOnly", on).apply();
     }
 
-    /** 截屏时裁掉状态栏和导航栏 */
-    public static boolean cropBars(Context c) {
-        return sp(c).getBoolean("cropBars", true);
+    /** 截图范围：0 全屏，1 裁掉状态栏和导航栏，2 只取屏幕中间区域 */
+    public static int cropMode(Context c) {
+        return sp(c).getInt("cropMode", 1);
     }
 
-    public static void setCropBars(Context c, boolean on) {
-        sp(c).edit().putBoolean("cropBars", on).apply();
+    public static void setCropMode(Context c, int mode) {
+        sp(c).edit().putInt("cropMode", mode).apply();
+    }
+
+    /** 截图最长边：1920 高清 / 1280 省流 */
+    public static int maxSide(Context c) {
+        return sp(c).getInt("maxSide", 1920);
+    }
+
+    public static void setMaxSide(Context c, int side) {
+        sp(c).edit().putInt("maxSide", side).apply();
     }
 
     private static final int HISTORY_MAX = 20;

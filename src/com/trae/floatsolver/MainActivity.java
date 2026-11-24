@@ -135,20 +135,66 @@ public class MainActivity extends Activity {
         });
         root.addView(rg);
 
-        CheckBox crop = new CheckBox(this);
-        crop.setText("裁掉状态栏和底部导航栏（减少干扰、更省流量）");
-        crop.setTextSize(14f);
-        crop.setTextColor(0xFF23263B);
-        crop.setChecked(Prefs.cropBars(this));
-        crop.setPadding(dp(4), dp(6), 0, dp(6));
-        crop.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+        TextView cropTip = new TextView(this);
+        cropTip.setText("截图范围");
+        cropTip.setTextSize(13.5f);
+        cropTip.setTextColor(0xFF4A4F68);
+        cropTip.setPadding(0, dp(10), 0, dp(2));
+        root.addView(cropTip);
+
+        RadioGroup cropGroup = new RadioGroup(this);
+        cropGroup.setOrientation(RadioGroup.VERTICAL);
+        String[] cropNames = {"全屏（保留状态栏，最保险）", "裁掉状态栏和导航栏（推荐）",
+                "只取屏幕中间区域（题目在正中时最省）"};
+        for (int i = 0; i < cropNames.length; i++) {
+            RadioButton rb = new RadioButton(this);
+            rb.setText(cropNames[i]);
+            rb.setTextSize(14f);
+            rb.setTextColor(0xFF23263B);
+            rb.setId(3000 + i);
+            rb.setPadding(dp(4), dp(4), 0, dp(4));
+            cropGroup.addView(rb);
+        }
+        ((android.widget.RadioButton) cropGroup.getChildAt(
+                Math.min(2, Math.max(0, Prefs.cropMode(this))))).setChecked(true);
+        cropGroup.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
             @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                Prefs.setCropBars(MainActivity.this, isChecked);
-                toast(isChecked ? "已开启裁边" : "已关闭裁边");
+            public void onCheckedChanged(RadioGroup group, int checkedId) {
+                Prefs.setCropMode(MainActivity.this, checkedId - 3000);
+                toast("截图范围已更新");
             }
         });
-        root.addView(crop);
+        root.addView(cropGroup);
+
+        TextView resTip = new TextView(this);
+        resTip.setText("截图清晰度（越高越准、越费流量）");
+        resTip.setTextSize(13.5f);
+        resTip.setTextColor(0xFF4A4F68);
+        resTip.setPadding(0, dp(8), 0, dp(2));
+        root.addView(resTip);
+
+        RadioGroup resGroup = new RadioGroup(this);
+        resGroup.setOrientation(RadioGroup.VERTICAL);
+        String[] resNames = {"高清 1920（推荐，识别率最高）", "省流 1280（费用约省一半，文字题基本够用）"};
+        for (int i = 0; i < resNames.length; i++) {
+            RadioButton rb = new RadioButton(this);
+            rb.setText(resNames[i]);
+            rb.setTextSize(14f);
+            rb.setTextColor(0xFF23263B);
+            rb.setId(3100 + i);
+            rb.setPadding(dp(4), dp(4), 0, dp(4));
+            resGroup.addView(rb);
+        }
+        ((android.widget.RadioButton) resGroup.getChildAt(
+                Prefs.maxSide(this) >= 1920 ? 0 : 1)).setChecked(true);
+        resGroup.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(RadioGroup group, int checkedId) {
+                Prefs.setMaxSide(MainActivity.this, checkedId - 3100 == 0 ? 1920 : 1280);
+                toast(checkedId - 3100 == 0 ? "已切到高清" : "已切到省流");
+            }
+        });
+        root.addView(resGroup);
 
         root.addView(section("自动模式"));
         CheckBox auto = new CheckBox(this);
@@ -348,7 +394,7 @@ public class MainActivity extends Activity {
 
         root.addView(section("关于"));
         TextView ver = new TextView(this);
-        ver.setText("版本 2.1");
+        ver.setText("版本 2.2");
         ver.setTextSize(13f);
         ver.setTextColor(0xFF7A809A);
         root.addView(ver);
@@ -532,7 +578,7 @@ public class MainActivity extends Activity {
                         while ((line = br.readLine()) != null) sb.append(line);
                         br.close();
                         String tag = new org.json.JSONObject(sb.toString()).optString("tag_name", "");
-                        String now = "v2.1";
+                        String now = "v2.2";
                         if (tag.isEmpty()) {
                             result = "没读到版本号";
                         } else if (tag.equalsIgnoreCase(now)) {
