@@ -50,7 +50,7 @@ public class MainActivity extends Activity {
         root.addView(title);
 
         TextView sub = new TextView(this);
-        sub.setText("刷题、网课、看文档时，屏幕上会有一个 AI 小球。点一下：自动截图 → AI 直接在你当前界面给出答案，不用切屏。");
+        sub.setText("刷题、网课、看文档时，屏幕上会有一个 AI 小球。点一下：自动读取屏幕上的题目（读不到时改截图）→ AI 直接在你当前界面给出答案，不用切屏。");
         sub.setTextSize(13);
         sub.setTextColor(0xFF6B7189);
         sub.setLineSpacing(dp(3), 1f);
@@ -394,7 +394,7 @@ public class MainActivity extends Activity {
 
         root.addView(section("关于"));
         TextView ver = new TextView(this);
-        ver.setText("版本 2.3");
+        ver.setText("版本 2.4");
         ver.setTextSize(13f);
         ver.setTextColor(0xFF7A809A);
         root.addView(ver);
@@ -578,7 +578,7 @@ public class MainActivity extends Activity {
                         while ((line = br.readLine()) != null) sb.append(line);
                         br.close();
                         String tag = new org.json.JSONObject(sb.toString()).optString("tag_name", "");
-                        String now = "v2.3";
+                        String now = "v2.4";
                         if (tag.isEmpty()) {
                             result = "没读到版本号";
                         } else if (tag.equalsIgnoreCase(now)) {

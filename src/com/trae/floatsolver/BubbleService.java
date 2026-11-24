@@ -53,6 +53,7 @@ public class BubbleService extends Service {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private boolean busy = false;
     private String lastDataUrl = null;
+    private String lastText = null;
     private View followWrap = null;
 
     /** 悬浮球直径（dp），比默认的浮窗按钮更小一点，少挡内容 */
@@ -505,6 +506,14 @@ public class BubbleService extends Service {
         if (bubble != null) bubble.setVisibility(View.GONE);
         if (panel != null) panel.setVisibility(View.GONE);
 
+        // 优先读屏取文字：原生控件里的题干比图片认字准，也不费图片 token
+        final String screenText = shot.readScreenText();
+        if (usableText(screenText)) {
+            if (bubble != null) bubble.setVisibility(View.VISIBLE);
+            requestTextAnswer(screenText, "正在思考…");
+            return;
+        }
+
         ui.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -531,19 +540,19 @@ public class BubbleService extends Service {
     }
 
     /** 把截图发给 AI，并流式写进浮层（点球提问和自动模式共用） */
-    private void requestAnswer(final Bitmap bitmap, String placeholder) {
-        String dataUrl = toDataUrl(bitmap);
-        bitmap.recycle();
-        lastDataUrl = dataUrl;
+    /** 一次提问的发起方式：读屏文字或截图 */
+    private interface Request {
+        void start(ChatClient.Sink sink);
+    }
+
+    /** 把一次请求的流式结果写进浮层（点球提问和自动模式共用） */
+    private void startStream(String placeholder, Request req) {
         busy = true;
         showPanelBelowBubble();
         setPanelText(placeholder);
         final boolean[] first = {true};
         final StringBuilder acc = new StringBuilder();
-        ChatClient.ask(Prefs.base(this), Prefs.model(this), Prefs.key(this), dataUrl,
-                Prefs.brief(this),
-                Prefs.answerOnly(this),
-                new ChatClient.Sink() {
+        req.start(new ChatClient.Sink() {
                     @Override
                     public void onDelta(String text) {
                         acc.append(text);
@@ -567,7 +576,7 @@ public class BubbleService extends Service {
                     @Override
                     public void onDone() {
                         busy = false;
-                        if (first[0]) panelText.setText("（没有返回内容，请检查模型是否支持识图）");
+                        if (first[0]) panelText.setText("（没有返回内容，请检查模型配置）");
                         updateBadge(panelText.getText().toString());
                         highlightAnswer();
                         fitPanelHeight();
@@ -583,10 +592,50 @@ public class BubbleService extends Service {
                 });
     }
 
+    private void requestAnswer(final Bitmap bitmap, final String placeholder) {
+        final String dataUrl = toDataUrl(bitmap);
+        bitmap.recycle();
+        lastDataUrl = dataUrl;
+        lastText = null;
+        startStream(placeholder, new Request() {
+            @Override
+            public void start(ChatClient.Sink sink) {
+                ChatClient.ask(Prefs.base(BubbleService.this), Prefs.model(BubbleService.this),
+                        Prefs.key(BubbleService.this), dataUrl,
+                        Prefs.brief(BubbleService.this), Prefs.answerOnly(BubbleService.this), sink);
+            }
+        });
+    }
+
+    private void requestTextAnswer(final String text, final String placeholder) {
+        lastText = text;
+        lastDataUrl = null;
+        startStream(placeholder, new Request() {
+            @Override
+            public void start(ChatClient.Sink sink) {
+                ChatClient.askText(Prefs.base(BubbleService.this), Prefs.model(BubbleService.this),
+                        Prefs.key(BubbleService.this), text,
+                        Prefs.brief(BubbleService.this), Prefs.answerOnly(BubbleService.this), sink);
+            }
+        });
+        if (panelTitle != null) panelTitle.setText("AI 解答 · 读屏");
+    }
+
+    /** 屏幕上读到的文字够不够当题目用：太少说明只是按钮和栏目名，改回截图 */
+    private static boolean usableText(String s) {
+        if (s == null) return false;
+        int cjk = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= 0x4E00 && c <= 0x9FFF) cjk++;
+        }
+        return cjk >= 20 && s.length() >= 40;
+    }
+
     /* ---------------- 追问 ---------------- */
 
     private void showFollowUp() {
-        if (lastDataUrl == null) {
+        if (lastDataUrl == null && lastText == null) {
             toast("先点一下小球截题，再追问");
             return;
         }
@@ -707,7 +756,7 @@ public class BubbleService extends Service {
         showPanelBelowBubble();
         final StringBuilder acc = new StringBuilder();
         ChatClient.followUp(Prefs.base(this), Prefs.model(this), Prefs.key(this), lastDataUrl,
-                baseText, question, new ChatClient.Sink() {
+                lastText, baseText, question, new ChatClient.Sink() {
                     @Override
                     public void onDelta(String text) {
                         acc.append(text);
@@ -742,6 +791,7 @@ public class BubbleService extends Service {
 
     private boolean autoRunning = false;
     private byte[] lastSig;
+    private String lastAutoText = null;
 
     private final Runnable autoTick = new Runnable() {
         @Override
@@ -761,6 +811,7 @@ public class BubbleService extends Service {
         if (autoRunning) return;
         autoRunning = true;
         lastSig = null;
+        lastAutoText = null;
         ui.postDelayed(autoTick, 900);
     }
 
@@ -768,13 +819,24 @@ public class BubbleService extends Service {
         autoRunning = false;
         ui.removeCallbacks(autoTick);
         lastSig = null;
+        lastAutoText = null;
     }
 
-    /** 定时截一张图：只有画面变化（换题）才请求，省费用也不刷屏 */
+    /** 定时检查一次：文字模式直接比对文字，读不到文字才退回截图比对 */
     private void autoShot() {
         if (busy) return;
         final ShotService shot = ShotService.INSTANCE;
         if (shot == null || !Prefs.configured(this)) return;
+
+        final String text = shot.readScreenText();
+        if (usableText(text)) {
+            lastSig = null;
+            if (text.equals(lastAutoText)) return;
+            lastAutoText = text;
+            requestTextAnswer(text, "识别到新题目，正在解答…");
+            return;
+        }
+        lastAutoText = null;
 
         final boolean panelVisible = panel != null && panel.getVisibility() == View.VISIBLE;
         if (panelVisible) panel.setAlpha(0f);

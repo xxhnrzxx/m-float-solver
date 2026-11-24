@@ -27,7 +27,8 @@ public class ChatClient {
     }
 
     private static final String SYSTEM = "你是一位严谨、耐心的中文做题辅导老师。"
-            + "用户发来的是手机屏幕截图，请找出其中正在被作答或提出的题目并直接解答。"
+            + "用户发来的是手机上正在作答的题目内容（可能是截图，也可能是界面文字）。"
+            + "请找出其中正在被作答或提出的题目并直接解答。"
             + "要求："
             + "1) 先逐字确认题干和全部选项的文字，屏幕字迹不清时按最可能的读法说明；"
             + "2) 选择题必须逐项分析：把 A、B、C、D 每一项单独列出来，写明它对或错的原因，再下结论；"
@@ -41,7 +42,8 @@ public class ChatClient {
             + "8) 语言简洁，不要寒暄，不要重复题目。";
 
     /** 精简模式：只给答案字母和一句理由，方便照着点 */
-    private static final String BRIEF = "你在帮人快速看答案。用户发来的是手机屏幕截图，请找出其中正在作答的题目。"
+    private static final String BRIEF = "你在帮人快速看答案。用户发来的是手机上的题目内容（截图或界面文字），"
+            + "请找出其中正在作答的题目。"
             + "选择题先在心里逐项排除错误选项，再核对体裁与年代、概念是否对应，确认后输出。"
             + "只输出三行："
             + "第一行固定格式「答案：X」，X 是正确选项字母，多选写成如 ABD，没有选项就写结论要点；"
@@ -77,19 +79,43 @@ public class ChatClient {
         }
     }
 
-    /** 追问：带着同一张题目截图和上一轮解答继续问 */
+    /** 纯文字请求：屏幕上读到的题干和选项，比截图认字更准 */
+    public static void askText(final String baseUrl, final String model, final String apiKey,
+                               final String screenText, final boolean brief, final boolean answerOnly,
+                               final Sink sink) {
+        try {
+            JSONArray messages = new JSONArray();
+            messages.put(new JSONObject().put("role", "system")
+                    .put("content", answerOnly ? ONLY : (brief ? BRIEF : SYSTEM)));
+            messages.put(new JSONObject().put("role", "user").put("content",
+                    "这是当前手机屏幕上显示的全部文字（按界面从上到下排列），"
+                            + "请自己找出正在作答的题目并解答：\n\n" + screenText));
+            post(baseUrl, model, apiKey, messages, sink);
+        } catch (Throwable e) {
+            sink.onError(String.valueOf(e.getMessage()));
+        }
+    }
+
+    /** 追问：带着同一道题的素材（截图或屏幕文字）和上一轮解答继续问 */
     public static void followUp(final String baseUrl, final String model, final String apiKey,
-                                final String imageDataUrl, final String previousAnswer,
+                                final String imageDataUrl, final String screenText,
+                                final String previousAnswer,
                                 final String question, final Sink sink) {
         try {
             JSONArray messages = new JSONArray();
             messages.put(new JSONObject().put("role", "system").put("content", SYSTEM));
 
-            JSONArray content = new JSONArray();
-            content.put(new JSONObject().put("type", "text").put("text", "这是题目的截图。"));
-            content.put(new JSONObject().put("type", "image_url")
-                    .put("image_url", new JSONObject().put("url", imageDataUrl)));
-            messages.put(new JSONObject().put("role", "user").put("content", content));
+            if (imageDataUrl != null) {
+                JSONArray content = new JSONArray();
+                content.put(new JSONObject().put("type", "text").put("text", "这是题目的截图。"));
+                content.put(new JSONObject().put("type", "image_url")
+                        .put("image_url", new JSONObject().put("url", imageDataUrl)));
+                messages.put(new JSONObject().put("role", "user").put("content", content));
+            } else {
+                messages.put(new JSONObject().put("role", "user").put("content",
+                        "这是当前手机屏幕上显示的全部文字（按界面从上到下排列），请从中找出题目：\n\n"
+                                + (screenText == null ? "（无）" : screenText)));
+            }
 
             messages.put(new JSONObject().put("role", "assistant")
                     .put("content", Tex.plain(previousAnswer)));
