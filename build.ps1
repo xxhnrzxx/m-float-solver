@@ -24,7 +24,10 @@ $rj = (Get-ChildItem -Recurse "$out\gen\*.java" | ForEach-Object { $_.FullName }
 if ($LASTEXITCODE -ne 0) { throw "javac failed" }
 
 Write-Output "== d8 =="
-& "$bt\d8.bat" --release --lib $aj --min-api 30 --output "$out\dex" (Get-ChildItem -Recurse "$out\classes\*.class" | ForEach-Object { $_.FullName })
+$list = "$out\classes.txt"
+(Get-ChildItem -Recurse "$out\classes\*.class" | ForEach-Object { $_.FullName }) |
+    Set-Content -Encoding ASCII $list
+& "$bt\d8.bat" --release --lib $aj --min-api 30 --output "$out\dex" "@$list"
 if ($LASTEXITCODE -ne 0) { throw "d8 failed" }
 
 Write-Output "== package =="

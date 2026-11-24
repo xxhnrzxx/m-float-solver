@@ -52,6 +52,8 @@ public class BubbleService extends Service {
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private boolean busy = false;
+    private boolean retried = false;
+    private boolean forceFresh = false;
     private String lastDataUrl = null;
     private String lastText = null;
     private View followWrap = null;
@@ -287,6 +289,7 @@ public class BubbleService extends Service {
         head.addView(tinyBtn("重截", new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                forceFresh = true;
                 ask();
             }
         }));
@@ -405,7 +408,9 @@ public class BubbleService extends Service {
             answerBadge.setVisibility(View.GONE);
             return;
         }
-        answerBadge.setText("答案 " + letters);
+        boolean unsure = text.contains("存疑");
+        answerBadge.setText(unsure ? "答案 " + letters + " ？" : "答案 " + letters);
+        answerBadge.setBackground(roundBg(unsure ? 0xFFF59E0B : 0xFF4F46E5, 14));
         answerBadge.setVisibility(View.VISIBLE);
     }
 
@@ -418,12 +423,19 @@ public class BubbleService extends Service {
 
     private String extractLetters(String text) {
         if (text == null || text.isEmpty()) return null;
-        String src = text.length() > 400 ? text.substring(0, 400) : text;
-        java.util.regex.Matcher m = P_ANSWER.matcher(src);
-        if (!m.find()) {
-            m = P_PICK.matcher(src);
-            if (!m.find()) return null;
+        String head = text.length() > 400 ? text.substring(0, 400) : text;
+        String tail = text.length() > 600 ? text.substring(text.length() - 600) : text;
+        java.util.regex.Matcher m = P_ANSWER.matcher(head);
+        boolean found = m.find();
+        if (!found) {
+            m = P_ANSWER.matcher(tail);
+            found = m.find();
         }
+        if (!found) {
+            m = P_PICK.matcher(tail);
+            found = m.find();
+        }
+        if (!found) return null;
         String raw = m.group(1).toUpperCase();
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < raw.length() && sb.length() < 4; i++) {
@@ -507,7 +519,7 @@ public class BubbleService extends Service {
         if (panel != null) panel.setVisibility(View.GONE);
 
         // 优先读屏取文字：原生控件里的题干比图片认字准，也不费图片 token
-        final String screenText = shot.readScreenText();
+        final String screenText = cleanScreenText(shot.readScreenText());
         if (usableText(screenText)) {
             if (bubble != null) bubble.setVisibility(View.VISIBLE);
             requestTextAnswer(screenText, "正在思考…");
@@ -539,15 +551,15 @@ public class BubbleService extends Service {
         }, 260);
     }
 
-    /** 把截图发给 AI，并流式写进浮层（点球提问和自动模式共用） */
     /** 一次提问的发起方式：读屏文字或截图 */
     private interface Request {
         void start(ChatClient.Sink sink);
     }
 
-    /** 把一次请求的流式结果写进浮层（点球提问和自动模式共用） */
+    /** 把一次请求的流式结果写进浮层（点球提问、复核和自动模式共用） */
     private void startStream(String placeholder, Request req) {
         busy = true;
+        retried = false;
         showPanelBelowBubble();
         setPanelText(placeholder);
         final boolean[] first = {true};
@@ -556,31 +568,14 @@ public class BubbleService extends Service {
                     @Override
                     public void onDelta(String text) {
                         acc.append(text);
-                        String shown = Tex.plain(acc.toString());
-                        if (first[0]) {
-                            first[0] = false;
-                            panelText.setText(shown);
-                            fitPanelHeight();
-                        } else {
-                            panelText.setText(shown);
-                        }
-                        updateBadge(panelText.getText().toString());
-                        panelScroll.post(new Runnable() {
-                            @Override
-                            public void run() {
-                                panelScroll.fullScroll(View.FOCUS_DOWN);
-                            }
-                        });
+                        renderStream(acc.toString(), first);
                     }
 
                     @Override
                     public void onDone() {
                         busy = false;
                         if (first[0]) panelText.setText("（没有返回内容，请检查模型配置）");
-                        updateBadge(panelText.getText().toString());
-                        highlightAnswer();
-                        fitPanelHeight();
-                        Prefs.addHistory(BubbleService.this, panelText.getText().toString());
+                        finalizeAnswer();
                     }
 
                     @Override
@@ -592,11 +587,77 @@ public class BubbleService extends Service {
                 });
     }
 
+    private void renderStream(String all, boolean[] first) {
+        String shown = Tex.plain(all);
+        panelText.setText(shown);
+        if (first[0]) {
+            first[0] = false;
+            fitPanelHeight();
+        }
+        updateBadge(shown);
+        panelScroll.post(new Runnable() {
+            @Override
+            public void run() {
+                panelScroll.fullScroll(View.FOCUS_DOWN);
+            }
+        });
+    }
+
+    /** 收尾：标红答案、存历史、写缓存；答案和原文对不上时自动复核一次 */
+    private void finalizeAnswer() {
+        final String answer = panelText.getText().toString();
+        if (!retried && needRetry(answer)) {
+            retryAnswer(answer);
+            return;
+        }
+        updateBadge(answer);
+        highlightAnswer();
+        fitPanelHeight();
+        Prefs.addHistory(this, answer);
+        if (lastText != null) cachePut(lastText, answer);
+    }
+
+    /** 答案里的字母/选项原文和题干对不上，带着上一轮答案再问一次 */
+    private void retryAnswer(final String previous) {
+        retried = true;
+        busy = true;
+        setPanelText("答案和题干原文对不上，正在复核…");
+        if (panelTitle != null) panelTitle.setText("AI 解答 · 复核");
+        final boolean[] first = {true};
+        final StringBuilder acc = new StringBuilder();
+        ChatClient.followUp(Prefs.base(this), Prefs.model(this), Prefs.key(this), lastDataUrl,
+                lastText, previous,
+                "上一轮答案里的选项字母或原文和题目不一致。请重新逐字核对题干和每个选项，"
+                        + "确认字母与内容对应后，按原来的格式给出最终答案，不要解释核对过程。",
+                new ChatClient.Sink() {
+                    @Override
+                    public void onDelta(String text) {
+                        acc.append(text);
+                        renderStream(acc.toString(), first);
+                    }
+
+                    @Override
+                    public void onDone() {
+                        busy = false;
+                        if (first[0]) panelText.setText(previous);
+                        finalizeAnswer();
+                    }
+
+                    @Override
+                    public void onError(String message) {
+                        busy = false;
+                        panelText.append("\n\n复核失败：" + message);
+                        fitPanelHeight();
+                    }
+                });
+    }
+
     private void requestAnswer(final Bitmap bitmap, final String placeholder) {
         final String dataUrl = toDataUrl(bitmap);
         bitmap.recycle();
         lastDataUrl = dataUrl;
         lastText = null;
+        forceFresh = false;
         startStream(placeholder, new Request() {
             @Override
             public void start(ChatClient.Sink sink) {
@@ -610,6 +671,20 @@ public class BubbleService extends Service {
     private void requestTextAnswer(final String text, final String placeholder) {
         lastText = text;
         lastDataUrl = null;
+
+        String cached = forceFresh ? null : cacheGet(text);
+        forceFresh = false;
+        if (cached != null) {
+            busy = false;
+            showPanelBelowBubble();
+            setPanelText(cached);
+            if (panelTitle != null) panelTitle.setText("AI 解答 · 缓存");
+            updateBadge(cached);
+            highlightAnswer();
+            fitPanelHeight();
+            return;
+        }
+
         startStream(placeholder, new Request() {
             @Override
             public void start(ChatClient.Sink sink) {
@@ -619,6 +694,156 @@ public class BubbleService extends Service {
             }
         });
         if (panelTitle != null) panelTitle.setText("AI 解答 · 读屏");
+    }
+
+    /* ---------------- 答案自检 / 同题缓存 ---------------- */
+
+    /** 同一道题 30 分钟内再点，直接出上次的答案 */
+    private final java.util.LinkedHashMap<String, String[]> qCache =
+            new java.util.LinkedHashMap<String, String[]>(8, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<String, String[]> eldest) {
+                    return size() > 8;
+                }
+            };
+
+    private String cacheGet(String text) {
+        String[] v = qCache.get(text);
+        if (v == null) return null;
+        if (System.currentTimeMillis() - Long.parseLong(v[1]) > 30 * 60 * 1000L) {
+            qCache.remove(text);
+            return null;
+        }
+        return v[0];
+    }
+
+    private void cachePut(String text, String answer) {
+        qCache.put(text, new String[]{answer, String.valueOf(System.currentTimeMillis())});
+    }
+
+    /** 答案可疑（字母不存在于选项、选项原文找不到、多选只给一个）就需要复核 */
+    private boolean needRetry(String answer) {
+        if (lastText == null || answer == null) return false;
+        java.util.Map<Character, String> opts = parseOptions(lastText);
+        if (opts.size() < 2) return false;
+        String letters = extractLetters(answer);
+        if (letters == null) return false;
+        for (int i = 0; i < letters.length(); i++) {
+            if (!opts.containsKey(letters.charAt(i))) return true;
+        }
+        if (letters.length() == 1 && isMultiHint(lastText)) return true;
+        String tail = squash(answerTail(answer));
+        if (tail.length() >= 2) {
+            StringBuilder all = new StringBuilder();
+            for (String v : opts.values()) all.append(squash(v));
+            if (all.indexOf(tail) < 0) return true;
+        }
+        return false;
+    }
+
+    /** 题干里明确写了多选 */
+    private static boolean isMultiHint(String text) {
+        return text.contains("多选") || text.contains("不定项") || text.contains("多项选择");
+    }
+
+    /** 从题干文字里解析「A. xxx」形式的选项 */
+    private static java.util.Map<Character, String> parseOptions(String text) {
+        java.util.HashMap<Character, String> map = new java.util.HashMap<Character, String>();
+        if (text == null) return map;
+        for (String line : text.split("\n")) {
+            String t = line.trim();
+            if (t.length() < 3) continue;
+            char c = t.charAt(0);
+            if (c < 'A' || c > 'H') continue;
+            char sep = t.charAt(1);
+            if (sep != '.' && sep != '、' && sep != '．' && sep != ')' && sep != '）'
+                    && sep != ':' && sep != '：') continue;
+            String body = t.substring(2).trim();
+            if (!body.isEmpty() && !map.containsKey(c)) map.put(c, body);
+        }
+        return map;
+    }
+
+    /** 「答案：B. ②③」里字母后面的那段原文 */
+    private static String answerTail(String answer) {
+        int i = answer.indexOf("答案：");
+        if (i < 0) i = answer.indexOf("答案:");
+        if (i < 0) return "";
+        int end = answer.indexOf('\n', i);
+        String line = end < 0 ? answer.substring(i) : answer.substring(i, end);
+        line = line.replace("（存疑）", "").replace("(存疑)", "");
+        int c = line.indexOf('：');
+        if (c < 0) c = line.indexOf(':');
+        if (c < 0) return "";
+        String tail = line.substring(c + 1).trim();
+        while (tail.length() > 0) {
+            char ch = tail.charAt(0);
+            if ((ch >= 'A' && ch <= 'H') || ch == '.' || ch == '、' || ch == '，'
+                    || ch == ',' || ch == ' ' || ch == '和') {
+                tail = tail.substring(1);
+            } else {
+                break;
+            }
+        }
+        return tail.trim();
+    }
+
+    /** 去掉空格和标点后再比，避免因为全角/半角、顿号不同而误判 */
+    private static String squash(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (Character.isLetterOrDigit(c) || (c >= 0x2460 && c <= 0x2473)) sb.append(c);
+        }
+        return sb.toString();
+    }
+
+    /* ---------------- 读屏文字清洗 ---------------- */
+
+    private static final String[] NOISE = {
+            "上一题", "下一题", "提交", "交卷", "收藏", "分享", "答题卡", "纠错", "查看解析",
+            "视频解析", "跳过", "标记", "笔记", "退出", "继续答题", "答题进度", "剩余时间",
+            "已用时", "正确率", "确认提交", "保存", "返回", "解析", "首页", "题库", "课程"
+    };
+
+    /** 去掉「上一题/提交/收藏」这类界面按钮文字，只把题目本身留给模型 */
+    private static String cleanScreenText(String raw) {
+        if (raw == null) return null;
+        StringBuilder sb = new StringBuilder();
+        String prev = null;
+        for (String line : raw.split("\n")) {
+            String t = line.trim();
+            if (t.isEmpty()) continue;
+            if (isNoiseLine(t)) continue;
+            String norm = normalizeOption(t);
+            if (norm.equals(prev)) continue;
+            sb.append(norm).append('\n');
+            prev = norm;
+        }
+        return sb.toString().trim();
+    }
+
+    private static boolean isNoiseLine(String t) {
+        if (t.matches("^\\d{1,2}:\\d{2}(:\\d{2})?$")) return true;
+        if (t.length() > 10) return false;
+        for (String w : NOISE) {
+            if (t.equals(w)) return true;
+        }
+        return false;
+    }
+
+    /** 「A、xxx」「A．xxx」统一成「A. xxx」，让选项更好认 */
+    private static String normalizeOption(String t) {
+        if (t.length() < 3) return t;
+        char c = t.charAt(0);
+        if (c < 'A' || c > 'H') return t;
+        char sep = t.charAt(1);
+        if (sep == '.' || sep == '、' || sep == '．' || sep == ')' || sep == '）') {
+            String body = t.substring(2).trim();
+            if (!body.isEmpty()) return c + ". " + body;
+        }
+        return t;
     }
 
     /** 屏幕上读到的文字够不够当题目用：太少说明只是按钮和栏目名，改回截图 */
@@ -828,7 +1053,7 @@ public class BubbleService extends Service {
         final ShotService shot = ShotService.INSTANCE;
         if (shot == null || !Prefs.configured(this)) return;
 
-        final String text = shot.readScreenText();
+        final String text = cleanScreenText(shot.readScreenText());
         if (usableText(text)) {
             lastSig = null;
             if (text.equals(lastAutoText)) return;
