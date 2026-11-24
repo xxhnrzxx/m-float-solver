@@ -307,6 +307,12 @@ public class BubbleService extends Service {
                 ask();
             }
         }));
+        head.addView(tinyBtn("读屏", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showReadText();
+            }
+        }));
         head.addView(tinyBtn("关闭", new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -539,6 +545,9 @@ public class BubbleService extends Service {
             requestTextAnswer(screenText, "正在思考…");
             return;
         }
+        toast(screenText == null || screenText.isEmpty()
+                ? "读屏没读到文字，改用截图"
+                : "读屏只读到 " + screenText.length() + " 字，改用截图");
 
         ui.postDelayed(new Runnable() {
             @Override
@@ -672,6 +681,7 @@ public class BubbleService extends Service {
         lastDataUrl = dataUrl;
         lastText = null;
         forceFresh = false;
+        if (panelTitle != null) panelTitle.setText("AI 解答 · 截图");
         startStream(placeholder, new Request() {
             @Override
             public void start(ChatClient.Sink sink) {
@@ -869,6 +879,40 @@ public class BubbleService extends Service {
             if (c >= 0x4E00 && c <= 0x9FFF) cjk++;
         }
         return cjk >= 20 && s.length() >= 40;
+    }
+
+    /** 自检：把当前屏幕读到的文字显示出来，判断是读屏不通还是题目本身就是图片 */
+    private void showReadText() {
+        final ShotService shot = ShotService.INSTANCE;
+        if (shot == null) {
+            toast("无障碍服务没开启");
+            return;
+        }
+        if (bubble != null) bubble.setVisibility(View.GONE);
+        if (panel != null) panel.setVisibility(View.GONE);
+        ui.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                String raw = shot.readScreenText();
+                String clean = cleanScreenText(raw);
+                if (bubble != null) bubble.setVisibility(View.VISIBLE);
+                showPanelBelowBubble();
+                if (panelTitle != null) panelTitle.setText("读屏自检");
+                int rawLen = raw == null ? 0 : raw.length();
+                int cleanLen = clean == null ? 0 : clean.length();
+                if (cleanLen == 0) {
+                    setPanelText("没读到文字（原始 " + rawLen + " 字）。\n\n"
+                            + "① 无障碍服务不是最新状态：去系统设置里关掉再打开一次；\n"
+                            + "② 题目是图片或画布（截图类刷题 App 常见），读屏本来就读不到；\n"
+                            + "③ 该 App 开了防截屏或隐私保护。\n\n"
+                            + "这种情况会继续走截图，答案质量取决于截图清晰度。");
+                } else {
+                    setPanelText("读屏原始 " + rawLen + " 字，清洗后 " + cleanLen + " 字：\n\n" + clean);
+                }
+                updateBadge(null);
+                fitPanelHeight();
+            }
+        }, 300);
     }
 
     /* ---------------- 追问 ---------------- */
