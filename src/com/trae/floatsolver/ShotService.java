@@ -8,6 +8,7 @@ import android.hardware.HardwareBuffer;
 import android.view.Display;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 
 /**
  * 只负责一件事：在无障碍服务开启后，为悬浮球提供一次截屏能力。
@@ -45,23 +46,48 @@ public class ShotService extends AccessibilityService {
      * 直接取纯文字发给 AI 比让它从截图里认字准得多；读不到时返回 null，调用方回退到截图。
      */
     public String readScreenText() {
+        String best = readFrom(getRootInActiveWindow());
         try {
-            AccessibilityNodeInfo root = getRootInActiveWindow();
-            if (root == null) return null;
-            StringBuilder sb = new StringBuilder();
-            try {
-                collect(root, sb, 0);
-            } finally {
-                try {
-                    root.recycle();
-                } catch (Throwable ignore) {
+            java.util.List<AccessibilityWindowInfo> wins = getWindows();
+            if (wins != null) {
+                for (AccessibilityWindowInfo w : wins) {
+                    if (w == null) continue;
+                    AccessibilityNodeInfo root = null;
+                    try {
+                        root = w.getRoot();
+                    } catch (Throwable ignore) {
+                    }
+                    if (root == null) continue;
+                    CharSequence pkg = root.getPackageName();
+                    if (pkg != null && getPackageName().contentEquals(pkg)) {
+                        try {
+                            root.recycle();
+                        } catch (Throwable ignore) {
+                        }
+                        continue;
+                    }
+                    String t = readFrom(root);
+                    if (t != null && (best == null || t.length() > best.length())) best = t;
                 }
             }
-            String s = sb.toString().trim();
-            return s.isEmpty() ? null : s;
-        } catch (Throwable t) {
-            return null;
+        } catch (Throwable ignore) {
         }
+        return best;
+    }
+
+    private String readFrom(AccessibilityNodeInfo root) {
+        if (root == null) return null;
+        StringBuilder sb = new StringBuilder();
+        try {
+            collect(root, sb, 0);
+        } finally {
+            try {
+                root.recycle();
+            } catch (Throwable ignore) {
+            }
+        }
+        String s = sb.toString().trim();
+        return s.isEmpty() ? null : s;
     }
 
     private void collect(AccessibilityNodeInfo node, StringBuilder sb, int depth) {

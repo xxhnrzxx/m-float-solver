@@ -538,40 +538,44 @@ public class BubbleService extends Service {
         if (bubble != null) bubble.setVisibility(View.GONE);
         if (panel != null) panel.setVisibility(View.GONE);
 
-        // 优先读屏取文字：原生控件里的题干比图片认字准，也不费图片 token
-        final String screenText = cleanScreenText(shot.readScreenText());
-        if (usableText(screenText)) {
-            if (bubble != null) bubble.setVisibility(View.VISIBLE);
-            requestTextAnswer(screenText, "正在思考…");
-            return;
-        }
-        toast(screenText == null || screenText.isEmpty()
-                ? "读屏没读到文字，改用截图"
-                : "读屏只读到 " + screenText.length() + " 字，改用截图");
-
+        // 悬浮层刚隐藏时读到的可能还是自己的窗口，等界面稳定再读
         ui.postDelayed(new Runnable() {
             @Override
             public void run() {
-                shot.takeShot(new ShotService.ShotCallback() {
+                final String screenText = cleanScreenText(shot.readScreenText());
+                if (usableText(screenText)) {
+                    if (bubble != null) bubble.setVisibility(View.VISIBLE);
+                    requestTextAnswer(screenText, "正在思考…");
+                    return;
+                }
+                toast(screenText == null || screenText.isEmpty()
+                        ? "读屏没读到文字，改用截图"
+                        : "读屏只读到 " + screenText.length() + " 字，改用截图");
+                ui.postDelayed(new Runnable() {
                     @Override
-                    public void onShot(final Bitmap bitmap) {
-                        ui.post(new Runnable() {
+                    public void run() {
+                        shot.takeShot(new ShotService.ShotCallback() {
                             @Override
-                            public void run() {
-                                if (bubble != null) bubble.setVisibility(View.VISIBLE);
-                                if (bitmap == null) {
-                                    showPanelBelowBubble();
-                                    setPanelText("截图失败。请确认无障碍服务已开启；部分系统需要关掉再重新开启一次。");
-                                    busy = false;
-                                    return;
-                                }
-                                requestAnswer(bitmap, "正在思考…");
+                            public void onShot(final Bitmap bitmap) {
+                                ui.post(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        if (bubble != null) bubble.setVisibility(View.VISIBLE);
+                                        if (bitmap == null) {
+                                            showPanelBelowBubble();
+                                            setPanelText("截图失败。请确认无障碍服务已开启；部分系统需要关掉再重新开启一次。");
+                                            busy = false;
+                                            return;
+                                        }
+                                        requestAnswer(bitmap, "正在思考…");
+                                    }
+                                });
                             }
                         });
                     }
-                });
+                }, 200);
             }
-        }, 260);
+        }, 220);
     }
 
     /** 一次提问的发起方式：读屏文字或截图 */
