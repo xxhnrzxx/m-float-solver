@@ -84,4 +84,44 @@ public class Prefs {
     public static void setAnswerOnly(Context c, boolean on) {
         sp(c).edit().putBoolean("answerOnly", on).apply();
     }
+
+    /** 截屏时裁掉状态栏和导航栏 */
+    public static boolean cropBars(Context c) {
+        return sp(c).getBoolean("cropBars", true);
+    }
+
+    public static void setCropBars(Context c, boolean on) {
+        sp(c).edit().putBoolean("cropBars", on).apply();
+    }
+
+    private static final int HISTORY_MAX = 20;
+
+    /** 最近 20 条答案，最新的在最前 */
+    public static org.json.JSONArray history(Context c) {
+        try {
+            return new org.json.JSONArray(sp(c).getString("history", "[]"));
+        } catch (Throwable e) {
+            return new org.json.JSONArray();
+        }
+    }
+
+    public static void addHistory(Context c, String answer) {
+        if (answer == null || answer.trim().isEmpty()) return;
+        org.json.JSONArray old = history(c);
+        org.json.JSONArray out = new org.json.JSONArray();
+        try {
+            out.put(new org.json.JSONObject()
+                    .put("t", System.currentTimeMillis())
+                    .put("a", answer.trim()));
+            for (int i = 0; i < old.length() && out.length() < HISTORY_MAX; i++) {
+                out.put(old.get(i));
+            }
+        } catch (Throwable ignore) {
+        }
+        sp(c).edit().putString("history", out.toString()).apply();
+    }
+
+    public static void clearHistory(Context c) {
+        sp(c).edit().remove("history").apply();
+    }
 }

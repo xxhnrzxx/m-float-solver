@@ -135,6 +135,21 @@ public class MainActivity extends Activity {
         });
         root.addView(rg);
 
+        CheckBox crop = new CheckBox(this);
+        crop.setText("裁掉状态栏和底部导航栏（减少干扰、更省流量）");
+        crop.setTextSize(14f);
+        crop.setTextColor(0xFF23263B);
+        crop.setChecked(Prefs.cropBars(this));
+        crop.setPadding(dp(4), dp(6), 0, dp(6));
+        crop.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                Prefs.setCropBars(MainActivity.this, isChecked);
+                toast(isChecked ? "已开启裁边" : "已关闭裁边");
+            }
+        });
+        root.addView(crop);
+
         root.addView(section("自动模式"));
         CheckBox auto = new CheckBox(this);
         auto.setText("自动识别：不用点球，换题自动出答案");
@@ -261,6 +276,89 @@ public class MainActivity extends Activity {
         tip.setPadding(0, dp(16), 0, 0);
         root.addView(tip);
 
+        root.addView(section("最近答案（最多 20 条）"));
+        final LinearLayout historyBox = new LinearLayout(this);
+        historyBox.setOrientation(LinearLayout.VERTICAL);
+        root.addView(historyBox);
+        final Runnable fillHistory = new Runnable() {
+            @Override
+            public void run() {
+                historyBox.removeAllViews();
+                org.json.JSONArray arr = Prefs.history(MainActivity.this);
+                if (arr.length() == 0) {
+                    TextView empty = new TextView(MainActivity.this);
+                    empty.setText("还没有记录。用悬浮球解答过的题目会自动出现在这里（只存文字）。");
+                    empty.setTextSize(12.5f);
+                    empty.setTextColor(0xFF7A809A);
+                    historyBox.addView(empty);
+                    return;
+                }
+                java.text.SimpleDateFormat fmt = new java.text.SimpleDateFormat("MM-dd HH:mm");
+                for (int i = 0; i < arr.length(); i++) {
+                    org.json.JSONObject o = arr.optJSONObject(i);
+                    if (o == null) continue;
+                    TextView one = new TextView(MainActivity.this);
+                    String a = o.optString("a", "");
+                    one.setText(fmt.format(new java.util.Date(o.optLong("t"))) + "　"
+                            + (a.length() > 90 ? a.substring(0, 90) + "…" : a));
+                    one.setTextSize(13f);
+                    one.setTextColor(0xFF23263B);
+                    one.setBackground(roundBg(0xFFF7F8FC, 10));
+                    one.setPadding(dp(12), dp(9), dp(12), dp(9));
+                    one.setLineSpacing(dp(2), 1f);
+                    LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    olp.bottomMargin = dp(6);
+                    final String full = a;
+                    one.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE))
+                                    .setPrimaryClip(android.content.ClipData.newPlainText("答案", full));
+                            toast("已复制这条答案");
+                        }
+                    });
+                    historyBox.addView(one, olp);
+                }
+            }
+        };
+        fillHistory.run();
+
+        LinearLayout historyBtns = new LinearLayout(this);
+        historyBtns.setOrientation(LinearLayout.HORIZONTAL);
+        historyBtns.addView(tinyBtn("刷新", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                fillHistory.run();
+                toast("已刷新");
+            }
+        }));
+        historyBtns.addView(tinyBtn("清空", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Prefs.clearHistory(MainActivity.this);
+                fillHistory.run();
+                toast("已清空");
+            }
+        }));
+        LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hlp.topMargin = dp(4);
+        root.addView(historyBtns, hlp);
+
+        root.addView(section("关于"));
+        TextView ver = new TextView(this);
+        ver.setText("版本 2.1");
+        ver.setTextSize(13f);
+        ver.setTextColor(0xFF7A809A);
+        root.addView(ver);
+        root.addView(primaryBtn("检查更新", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                checkUpdate();
+            }
+        }));
+
         if (Build.VERSION.SDK_INT >= 33) {
             try {
                 requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 11);
@@ -386,5 +484,79 @@ public class MainActivity extends Activity {
 
     private void toast(String msg) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+    }
+
+    private TextView tinyBtn(String text, View.OnClickListener l) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextSize(12.5f);
+        t.setTextColor(0xFF4F46E5);
+        t.setTypeface(null, Typeface.BOLD);
+        t.setPadding(dp(12), dp(6), dp(12), dp(6));
+        t.setBackground(roundBg(0xFFEEF0FF, 9));
+        t.setOnClickListener(l);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.rightMargin = dp(8);
+        t.setLayoutParams(lp);
+        return t;
+    }
+
+    private GradientDrawable roundBg(int color, int radiusDp) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(color);
+        g.setCornerRadius(dp(radiusDp));
+        return g;
+    }
+
+    /** 读 GitHub Releases 最新版本号并和本地版本比较 */
+    private void checkUpdate() {
+        toast("正在检查…");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                String result;
+                try {
+                    java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(
+                            "https://api.github.com/repos/xxhnrzxx/m-float-solver/releases/latest")
+                            .openConnection();
+                    c.setConnectTimeout(12000);
+                    c.setReadTimeout(12000);
+                    c.setRequestProperty("Accept", "application/vnd.github+json");
+                    int code = c.getResponseCode();
+                    if (code == 200) {
+                        java.io.BufferedReader br = new java.io.BufferedReader(
+                                new java.io.InputStreamReader(c.getInputStream(), "UTF-8"));
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = br.readLine()) != null) sb.append(line);
+                        br.close();
+                        String tag = new org.json.JSONObject(sb.toString()).optString("tag_name", "");
+                        String now = "v2.1";
+                        if (tag.isEmpty()) {
+                            result = "没读到版本号";
+                        } else if (tag.equalsIgnoreCase(now)) {
+                            result = "已是最新版本（" + now + "）";
+                        } else {
+                            result = "发现新版本 " + tag + "，当前 " + now
+                                    + "，可在 GitHub Releases 下载";
+                        }
+                    } else if (code == 404) {
+                        result = "读不到更新信息（仓库需设为公开）";
+                    } else {
+                        result = "检查失败 HTTP " + code;
+                    }
+                } catch (Throwable e) {
+                    result = "检查失败：" + e.getClass().getSimpleName();
+                }
+                final String msg = result;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        toast(msg);
+                    }
+                });
+            }
+        }).start();
     }
 }

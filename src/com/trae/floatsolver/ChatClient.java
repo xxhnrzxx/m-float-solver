@@ -60,6 +60,48 @@ public class ChatClient {
     public static void ask(final String baseUrl, final String model, final String apiKey,
                            final String imageDataUrl, final boolean brief, final boolean answerOnly,
                            final Sink sink) {
+        try {
+            JSONArray content = new JSONArray();
+            content.put(new JSONObject().put("type", "text")
+                    .put("text", "请解答屏幕截图中的题目。"));
+            content.put(new JSONObject().put("type", "image_url")
+                    .put("image_url", new JSONObject().put("url", imageDataUrl)));
+
+            JSONArray messages = new JSONArray();
+            messages.put(new JSONObject().put("role", "system")
+                    .put("content", answerOnly ? ONLY : (brief ? BRIEF : SYSTEM)));
+            messages.put(new JSONObject().put("role", "user").put("content", content));
+            post(baseUrl, model, apiKey, messages, sink);
+        } catch (Throwable e) {
+            sink.onError(String.valueOf(e.getMessage()));
+        }
+    }
+
+    /** 追问：带着同一张题目截图和上一轮解答继续问 */
+    public static void followUp(final String baseUrl, final String model, final String apiKey,
+                                final String imageDataUrl, final String previousAnswer,
+                                final String question, final Sink sink) {
+        try {
+            JSONArray messages = new JSONArray();
+            messages.put(new JSONObject().put("role", "system").put("content", SYSTEM));
+
+            JSONArray content = new JSONArray();
+            content.put(new JSONObject().put("type", "text").put("text", "这是题目的截图。"));
+            content.put(new JSONObject().put("type", "image_url")
+                    .put("image_url", new JSONObject().put("url", imageDataUrl)));
+            messages.put(new JSONObject().put("role", "user").put("content", content));
+
+            messages.put(new JSONObject().put("role", "assistant")
+                    .put("content", Tex.plain(previousAnswer)));
+            messages.put(new JSONObject().put("role", "user").put("content", question));
+            post(baseUrl, model, apiKey, messages, sink);
+        } catch (Throwable e) {
+            sink.onError(String.valueOf(e.getMessage()));
+        }
+    }
+
+    private static void post(final String baseUrl, final String model, final String apiKey,
+                             final JSONArray messages, final Sink sink) {
         final Handler main = new Handler(Looper.getMainLooper());
         new Thread(new Runnable() {
             @Override
@@ -75,17 +117,6 @@ public class ChatClient {
                     conn.setDoOutput(true);
                     conn.setRequestProperty("Content-Type", "application/json");
                     conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-
-                    JSONArray content = new JSONArray();
-                    content.put(new JSONObject().put("type", "text")
-                            .put("text", "请解答屏幕截图中的题目。"));
-                    content.put(new JSONObject().put("type", "image_url")
-                            .put("image_url", new JSONObject().put("url", imageDataUrl)));
-
-                    JSONArray messages = new JSONArray();
-                    messages.put(new JSONObject().put("role", "system")
-                            .put("content", answerOnly ? ONLY : (brief ? BRIEF : SYSTEM)));
-                    messages.put(new JSONObject().put("role", "user").put("content", content));
 
                     JSONObject body = new JSONObject()
                             .put("model", model)

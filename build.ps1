@@ -46,11 +46,19 @@ Write-Output "== zipalign =="
 if ($LASTEXITCODE -ne 0) { throw "zipalign failed" }
 
 Write-Output "== apksigner =="
-$ks = "$env:USERPROFILE\.android\debug.keystore"
-& "$bt\apksigner.bat" sign --ks $ks --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey --out "$out\app-debug.apk" "$out\aligned.apk"
-if ($LASTEXITCODE -ne 0) { throw "apksigner failed" }
+$rel = "$proj\release.keystore"
+if (Test-Path $rel) {
+    & "$bt\apksigner.bat" sign --ks $rel --ks-pass pass:mfloat2026 --key-pass pass:mfloat2026 --ks-key-alias mfloat --out "$out\app-release.apk" "$out\aligned.apk"
+    if ($LASTEXITCODE -ne 0) { throw "apksigner failed" }
+    $final = "$out\app-release.apk"
+} else {
+    $ks = "$env:USERPROFILE\.android\debug.keystore"
+    & "$bt\apksigner.bat" sign --ks $ks --ks-pass pass:android --key-pass pass:android --ks-key-alias androiddebugkey --out "$out\app-debug.apk" "$out\aligned.apk"
+    if ($LASTEXITCODE -ne 0) { throw "apksigner failed" }
+    $final = "$out\app-debug.apk"
+}
 
 Write-Output "== verify =="
-& "$bt\apksigner.bat" verify --print-certs "$out\app-debug.apk"
-& "$bt\aapt2.exe" dump badging "$out\app-debug.apk" | Select-Object -First 6
-Write-Output ("APK: " + (Get-Item "$out\app-debug.apk").FullName + "  " + (Get-Item "$out\app-debug.apk").Length + " bytes")
+& "$bt\apksigner.bat" verify --print-certs $final
+& "$bt\aapt2.exe" dump badging $final | Select-Object -First 6
+Write-Output ("APK: " + $final + "  " + (Get-Item $final).Length + " bytes")

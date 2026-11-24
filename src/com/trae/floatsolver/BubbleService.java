@@ -52,6 +52,8 @@ public class BubbleService extends Service {
 
     private final Handler ui = new Handler(Looper.getMainLooper());
     private boolean busy = false;
+    private String lastDataUrl = null;
+    private View followWrap = null;
 
     /** 悬浮球直径（dp），比默认的浮窗按钮更小一点，少挡内容 */
     private static final int BUBBLE_DP = 42;
@@ -87,6 +89,7 @@ public class BubbleService extends Service {
     @Override
     public void onDestroy() {
         RUNNING = false;
+        closeFollowUp();
         try {
             if (panel != null) wm.removeView(panel);
         } catch (Throwable ignore) {
@@ -268,6 +271,12 @@ public class BubbleService extends Service {
         head.addView(panelTitle, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
+        head.addView(tinyBtn("追问", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showFollowUp();
+            }
+        }));
         head.addView(tinyBtn("复制", new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -525,6 +534,7 @@ public class BubbleService extends Service {
     private void requestAnswer(final Bitmap bitmap, String placeholder) {
         String dataUrl = toDataUrl(bitmap);
         bitmap.recycle();
+        lastDataUrl = dataUrl;
         busy = true;
         showPanelBelowBubble();
         setPanelText(placeholder);
@@ -561,12 +571,168 @@ public class BubbleService extends Service {
                         updateBadge(panelText.getText().toString());
                         highlightAnswer();
                         fitPanelHeight();
+                        Prefs.addHistory(BubbleService.this, panelText.getText().toString());
                     }
 
                     @Override
                     public void onError(String message) {
                         busy = false;
                         panelText.append("\n\n出错：" + message);
+                        fitPanelHeight();
+                    }
+                });
+    }
+
+    /* ---------------- 追问 ---------------- */
+
+    private void showFollowUp() {
+        if (lastDataUrl == null) {
+            toast("先点一下小球截题，再追问");
+            return;
+        }
+        if (followWrap != null) return;
+
+        final android.widget.FrameLayout wrap = new android.widget.FrameLayout(this);
+        wrap.setBackgroundColor(0x66000000);
+        wrap.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                closeFollowUp();
+            }
+        });
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(roundBg(0xFFFFFFFF, 16));
+        card.setPadding(dp(16), dp(14), dp(16), dp(14));
+        card.setOnClickListener(null);
+
+        TextView title = new TextView(this);
+        title.setText("追问这道题");
+        title.setTextSize(15);
+        title.setTypeface(null, Typeface.BOLD);
+        title.setTextColor(0xFF14172B);
+        card.addView(title);
+
+        final android.widget.EditText edit = new android.widget.EditText(this);
+        edit.setHint("例如：为什么不是 C？第 3 步再讲讲");
+        edit.setTextSize(14.5f);
+        edit.setTextColor(0xFF23263B);
+        edit.setHintTextColor(0xFF9AA0B6);
+        edit.setBackground(roundBg(0xFFF4F5FA, 10));
+        edit.setPadding(dp(12), dp(10), dp(12), dp(10));
+        edit.setMaxLines(4);
+        LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        elp.topMargin = dp(10);
+        card.addView(edit, elp);
+
+        LinearLayout btns = new LinearLayout(this);
+        btns.setOrientation(LinearLayout.HORIZONTAL);
+        btns.setGravity(Gravity.END);
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        blp.topMargin = dp(10);
+
+        TextView cancel = tinyBtn("取消", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                closeFollowUp();
+            }
+        });
+        TextView send = tinyBtn("发送", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                String q = edit.getText().toString().trim();
+                if (q.isEmpty()) {
+                    toast("先写要问的内容");
+                    return;
+                }
+                closeFollowUp();
+                followUpRequest(q);
+            }
+        });
+        send.setTextColor(0xFFFFFFFF);
+        send.setBackground(roundBg(0xFF4F46E5, 9));
+        btns.addView(cancel);
+        btns.addView(send);
+        card.addView(btns, blp);
+
+        android.widget.FrameLayout.LayoutParams clp = new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        clp.gravity = Gravity.BOTTOM;
+        clp.leftMargin = dp(14);
+        clp.rightMargin = dp(14);
+        clp.bottomMargin = dp(90);
+        wrap.addView(card, clp);
+
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                0, PixelFormat.TRANSLUCENT);
+        lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                | WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE;
+        wm.addView(wrap, lp);
+        followWrap = wrap;
+
+        edit.requestFocus();
+        edit.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                android.view.inputmethod.InputMethodManager imm =
+                        (android.view.inputmethod.InputMethodManager)
+                                getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.showSoftInput(edit, 0);
+            }
+        }, 250);
+    }
+
+    private void closeFollowUp() {
+        if (followWrap == null) return;
+        try {
+            wm.removeView(followWrap);
+        } catch (Throwable ignore) {
+        }
+        followWrap = null;
+    }
+
+    private void followUpRequest(final String question) {
+        if (busy) {
+            toast("正在回答中，稍等一下");
+            return;
+        }
+        final String baseText = panelText == null ? "" : panelText.getText().toString();
+        busy = true;
+        showPanelBelowBubble();
+        final StringBuilder acc = new StringBuilder();
+        ChatClient.followUp(Prefs.base(this), Prefs.model(this), Prefs.key(this), lastDataUrl,
+                baseText, question, new ChatClient.Sink() {
+                    @Override
+                    public void onDelta(String text) {
+                        acc.append(text);
+                        panelText.setText(baseText + "\n\n【问】" + question + "\n"
+                                + Tex.plain(acc.toString()));
+                        panelScroll.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                panelScroll.fullScroll(View.FOCUS_DOWN);
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onDone() {
+                        busy = false;
+                        highlightAnswer();
+                        fitPanelHeight();
+                        Prefs.addHistory(BubbleService.this, panelText.getText().toString());
+                    }
+
+                    @Override
+                    public void onError(String message) {
+                        busy = false;
+                        panelText.setText(baseText + "\n\n追问出错：" + message);
                         fitPanelHeight();
                     }
                 });
@@ -670,6 +836,15 @@ public class BubbleService extends Service {
     }
 
     private String toDataUrl(Bitmap bmp) {
+        if (Prefs.cropBars(this)) {
+            int top = bmp.getHeight() * 6 / 100;
+            int bottom = bmp.getHeight() * 95 / 100;
+            if (bottom - top > 100) {
+                Bitmap cut = Bitmap.createBitmap(bmp, 0, top, bmp.getWidth(), bottom - top);
+                bmp.recycle();
+                bmp = cut;
+            }
+        }
         int w = bmp.getWidth();
         int h = bmp.getHeight();
         float k = Math.min(1f, 1920f / Math.max(w, h));
