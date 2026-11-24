@@ -169,8 +169,20 @@ public class BubbleService extends Service {
         bubble.setOnTouchListener(new View.OnTouchListener() {
             float downRawX, downRawY;
             int startX, startY;
-            long downTime;
             boolean moved;
+            boolean longFired;
+            final Runnable longPress;
+
+            {
+                longPress = new Runnable() {
+                    @Override
+                    public void run() {
+                        longFired = true;
+                        toast("已关闭悬浮球，需要时从 App 重新开启");
+                        stopSelf();
+                    }
+                };
+            }
 
             @Override
             public boolean onTouch(View v, MotionEvent e) {
@@ -180,14 +192,19 @@ public class BubbleService extends Service {
                         downRawY = e.getRawY();
                         startX = bubbleLp.x;
                         startY = bubbleLp.y;
-                        downTime = System.currentTimeMillis();
                         moved = false;
+                        longFired = false;
+                        // 按住满 2 秒立即关闭，不用等松手
+                        ui.removeCallbacks(longPress);
+                        ui.postDelayed(longPress, 2000);
                         return true;
                     case MotionEvent.ACTION_MOVE: {
                         float dx = e.getRawX() - downRawX;
                         float dy = e.getRawY() - downRawY;
                         if (Math.abs(dx) > dp(6) || Math.abs(dy) > dp(6)) moved = true;
                         if (moved) {
+                            // 开始拖动就取消长按计时
+                            ui.removeCallbacks(longPress);
                             int maxX = getResources().getDisplayMetrics().widthPixels - dp(BUBBLE_DP);
                             int maxY = getResources().getDisplayMetrics().heightPixels - dp(BUBBLE_DP);
                             bubbleLp.x = clamp(startX + (int) dx, 0, maxX);
@@ -200,14 +217,11 @@ public class BubbleService extends Service {
                         return true;
                     }
                     case MotionEvent.ACTION_UP:
-                        if (!moved) {
-                            if (System.currentTimeMillis() - downTime > 2000) {
-                                toast("长按 2 秒，已关闭悬浮球");
-                                stopSelf();
-                            } else {
-                                ask();
-                            }
-                        }
+                        ui.removeCallbacks(longPress);
+                        if (!moved && !longFired) ask();
+                        return true;
+                    case MotionEvent.ACTION_CANCEL:
+                        ui.removeCallbacks(longPress);
                         return true;
                 }
                 return false;
