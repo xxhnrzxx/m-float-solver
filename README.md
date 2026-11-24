@@ -64,4 +64,5 @@ src/com/trae/floatsolver/
 ```
 <img width="1080" height="2268" alt="9765d3d72d5d925032d197f33fce9acc" src="https://github.com/user-attachments/assets/4956b5dd-bddc-4da5-846e-3d82f419aee3" />
 <img width="984" height="1504" alt="41031a8e6b75fcd0be38f8330e013c85" src="https://github.com/user-attachments/assets/63ca2f65-07c7-4a09-b605-33a3dbb8c009" />
-<img width="1080" height="2376" alt="48e7fb0b3eeb5398e866614644999e93" src="https://github.com/user-attachments/assets/6c48b8e2-4b2d-4e6f-83b5-8f97cd18741f" />
+<img width="1080" height="2096" alt="71e145768ed43d073652b95fe1f197b0" src="https://github.com/user-attachments/assets/25d30a8b-dc6c-43b5-910f-891ebf7cfab4" />
+
