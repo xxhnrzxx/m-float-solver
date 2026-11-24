@@ -343,7 +343,7 @@ public class MainActivity extends Activity {
         tip.setPadding(0, dp(16), 0, 0);
         root.addView(tip);
 
-        root.addView(section("最近答案（最多 20 条）"));
+        root.addView(section("最近题目和答案（最多 20 条）"));
         final LinearLayout historyBox = new LinearLayout(this);
         historyBox.setOrientation(LinearLayout.VERTICAL);
         root.addView(historyBox);
@@ -354,7 +354,7 @@ public class MainActivity extends Activity {
                 org.json.JSONArray arr = Prefs.history(MainActivity.this);
                 if (arr.length() == 0) {
                     TextView empty = new TextView(MainActivity.this);
-                    empty.setText("还没有记录。用悬浮球解答过的题目会自动出现在这里（只存文字）。");
+                    empty.setText("还没有记录。用悬浮球解答过的题目会自动出现在这里（题目和答案都存文字）。");
                     empty.setTextSize(12.5f);
                     empty.setTextColor(0xFF7A809A);
                     historyBox.addView(empty);
@@ -364,28 +364,49 @@ public class MainActivity extends Activity {
                 for (int i = 0; i < arr.length(); i++) {
                     org.json.JSONObject o = arr.optJSONObject(i);
                     if (o == null) continue;
-                    TextView one = new TextView(MainActivity.this);
-                    String a = o.optString("a", "");
-                    one.setText(fmt.format(new java.util.Date(o.optLong("t"))) + "　"
-                            + (a.length() > 90 ? a.substring(0, 90) + "…" : a));
-                    one.setTextSize(13f);
-                    one.setTextColor(0xFF23263B);
-                    one.setBackground(roundBg(0xFFF7F8FC, 10));
-                    one.setPadding(dp(12), dp(9), dp(12), dp(9));
-                    one.setLineSpacing(dp(2), 1f);
+                    final String q = o.optString("q", "").trim();
+                    final String a = o.optString("a", "");
+
+                    LinearLayout card = new LinearLayout(MainActivity.this);
+                    card.setOrientation(LinearLayout.VERTICAL);
+                    card.setBackground(roundBg(0xFFF7F8FC, 10));
+                    card.setPadding(dp(12), dp(9), dp(12), dp(9));
+
+                    TextView meta = new TextView(MainActivity.this);
+                    meta.setText(fmt.format(new java.util.Date(o.optLong("t"))));
+                    meta.setTextSize(11.5f);
+                    meta.setTextColor(0xFF9AA0B4);
+                    card.addView(meta);
+
+                    TextView qv = new TextView(MainActivity.this);
+                    qv.setText(q.isEmpty() ? "题目：（截图题，未存文字）" : "题目：" + cut(q, 90));
+                    qv.setTextSize(12.5f);
+                    qv.setTextColor(0xFF4A4F68);
+                    qv.setLineSpacing(dp(2), 1f);
+                    qv.setPadding(0, dp(3), 0, 0);
+                    card.addView(qv);
+
+                    TextView av = new TextView(MainActivity.this);
+                    av.setText("答案：" + cut(a, 120));
+                    av.setTextSize(13f);
+                    av.setTextColor(0xFF23263B);
+                    av.setLineSpacing(dp(2), 1f);
+                    av.setPadding(0, dp(3), 0, 0);
+                    card.addView(av);
+
                     LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                     olp.bottomMargin = dp(6);
-                    final String full = a;
-                    one.setOnClickListener(new View.OnClickListener() {
+                    card.setOnClickListener(new View.OnClickListener() {
                         @Override
                         public void onClick(View v) {
+                            String text = (q.isEmpty() ? "" : "题目：" + q + "\n") + "答案：" + a;
                             ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE))
-                                    .setPrimaryClip(android.content.ClipData.newPlainText("答案", full));
-                            toast("已复制这条答案");
+                                    .setPrimaryClip(android.content.ClipData.newPlainText("题目和答案", text));
+                            toast("已复制题目和答案");
                         }
                     });
-                    historyBox.addView(one, olp);
+                    historyBox.addView(card, olp);
                 }
             }
         };
@@ -415,7 +436,7 @@ public class MainActivity extends Activity {
 
         root.addView(section("关于"));
         TextView ver = new TextView(this);
-        ver.setText("版本 2.7");
+        ver.setText("版本 2.8");
         ver.setTextSize(13f);
         ver.setTextColor(0xFF7A809A);
         root.addView(ver);
@@ -691,7 +712,7 @@ public class MainActivity extends Activity {
                         while ((line = br.readLine()) != null) sb.append(line);
                         br.close();
                         String tag = new org.json.JSONObject(sb.toString()).optString("tag_name", "");
-                        String now = "v2.7";
+                        String now = "v2.8";
                         if (tag.isEmpty()) {
                             result = "没读到版本号";
                         } else if (tag.equalsIgnoreCase(now)) {

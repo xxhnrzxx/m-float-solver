@@ -114,13 +114,16 @@ public class Prefs {
         }
     }
 
-    public static void addHistory(Context c, String answer) {
+    public static void addHistory(Context c, String question, String answer) {
         if (answer == null || answer.trim().isEmpty()) return;
+        String q = question == null ? "" : question.trim();
+        if (q.length() > 300) q = q.substring(0, 300);
         org.json.JSONArray old = history(c);
         org.json.JSONArray out = new org.json.JSONArray();
         try {
             out.put(new org.json.JSONObject()
                     .put("t", System.currentTimeMillis())
+                    .put("q", q)
                     .put("a", answer.trim()));
             for (int i = 0; i < old.length() && out.length() < HISTORY_MAX; i++) {
                 out.put(old.get(i));

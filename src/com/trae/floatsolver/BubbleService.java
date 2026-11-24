@@ -627,7 +627,7 @@ public class BubbleService extends Service {
         updateBadge(answer);
         highlightAnswer();
         fitPanelHeight();
-        Prefs.addHistory(this, answer);
+        Prefs.addHistory(this, lastText, answer);
         if (lastText != null) cachePut(lastText, answer);
     }
 
@@ -1014,7 +1014,8 @@ public class BubbleService extends Service {
                         busy = false;
                         highlightAnswer();
                         fitPanelHeight();
-                        Prefs.addHistory(BubbleService.this, panelText.getText().toString());
+                        Prefs.addHistory(BubbleService.this, lastText,
+                                panelText.getText().toString());
                     }
 
                     @Override
