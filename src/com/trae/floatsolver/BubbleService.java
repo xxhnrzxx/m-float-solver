@@ -196,7 +196,7 @@ public class BubbleService extends Service {
                         longFired = false;
                         // 按住满 2 秒立即关闭，不用等松手
                         ui.removeCallbacks(longPress);
-                        ui.postDelayed(longPress, 2000);
+                        ui.postDelayed(longPress, 1500);
                         return true;
                     case MotionEvent.ACTION_MOVE: {
                         float dx = e.getRawX() - downRawX;
@@ -305,12 +305,6 @@ public class BubbleService extends Service {
             public void onClick(View v) {
                 forceFresh = true;
                 ask();
-            }
-        }));
-        head.addView(tinyBtn("读屏", new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                showReadText();
             }
         }));
         head.addView(tinyBtn("关闭", new View.OnClickListener() {
@@ -538,44 +532,30 @@ public class BubbleService extends Service {
         if (bubble != null) bubble.setVisibility(View.GONE);
         if (panel != null) panel.setVisibility(View.GONE);
 
-        // 悬浮层刚隐藏时读到的可能还是自己的窗口，等界面稳定再读
+        // 等悬浮层完全隐藏，避免它出现在截图里
         ui.postDelayed(new Runnable() {
             @Override
             public void run() {
-                final String screenText = cleanScreenText(shot.readScreenText());
-                if (usableText(screenText)) {
-                    if (bubble != null) bubble.setVisibility(View.VISIBLE);
-                    requestTextAnswer(screenText, "正在思考…");
-                    return;
-                }
-                toast(screenText == null || screenText.isEmpty()
-                        ? "读屏没读到文字，改用截图"
-                        : "读屏只读到 " + screenText.length() + " 字，改用截图");
-                ui.postDelayed(new Runnable() {
+                shot.takeShot(new ShotService.ShotCallback() {
                     @Override
-                    public void run() {
-                        shot.takeShot(new ShotService.ShotCallback() {
+                    public void onShot(final Bitmap bitmap) {
+                        ui.post(new Runnable() {
                             @Override
-                            public void onShot(final Bitmap bitmap) {
-                                ui.post(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        if (bubble != null) bubble.setVisibility(View.VISIBLE);
-                                        if (bitmap == null) {
-                                            showPanelBelowBubble();
-                                            setPanelText("截图失败。请确认无障碍服务已开启；部分系统需要关掉再重新开启一次。");
-                                            busy = false;
-                                            return;
-                                        }
-                                        requestAnswer(bitmap, "正在思考…");
-                                    }
-                                });
+                            public void run() {
+                                if (bubble != null) bubble.setVisibility(View.VISIBLE);
+                                if (bitmap == null) {
+                                    showPanelBelowBubble();
+                                    setPanelText("截图失败。请确认无障碍服务已开启；部分系统需要关掉再重新开启一次。");
+                                    busy = false;
+                                    return;
+                                }
+                                requestAnswer(bitmap, "正在思考…");
                             }
                         });
                     }
-                }, 200);
+                });
             }
-        }, 220);
+        }, 260);
     }
 
     /** 一次提问的发起方式：读屏文字或截图 */
@@ -696,34 +676,6 @@ public class BubbleService extends Service {
         });
     }
 
-    private void requestTextAnswer(final String text, final String placeholder) {
-        lastText = text;
-        lastDataUrl = null;
-
-        String cached = forceFresh ? null : cacheGet(text);
-        forceFresh = false;
-        if (cached != null) {
-            busy = false;
-            showPanelBelowBubble();
-            setPanelText(cached);
-            if (panelTitle != null) panelTitle.setText("AI 解答 · 缓存");
-            updateBadge(cached);
-            highlightAnswer();
-            fitPanelHeight();
-            return;
-        }
-
-        startStream(placeholder, new Request() {
-            @Override
-            public void start(ChatClient.Sink sink) {
-                ChatClient.askText(Prefs.base(BubbleService.this), Prefs.model(BubbleService.this),
-                        Prefs.key(BubbleService.this), text,
-                        Prefs.brief(BubbleService.this), Prefs.answerOnly(BubbleService.this), sink);
-            }
-        });
-        if (panelTitle != null) panelTitle.setText("AI 解答 · 读屏");
-    }
-
     /* ---------------- 答案自检 / 同题缓存 ---------------- */
 
     /** 同一道题 30 分钟内再点，直接出上次的答案 */
@@ -825,98 +777,6 @@ public class BubbleService extends Service {
             if (Character.isLetterOrDigit(c) || (c >= 0x2460 && c <= 0x2473)) sb.append(c);
         }
         return sb.toString();
-    }
-
-    /* ---------------- 读屏文字清洗 ---------------- */
-
-    private static final String[] NOISE = {
-            "上一题", "下一题", "提交", "交卷", "收藏", "分享", "答题卡", "纠错", "查看解析",
-            "视频解析", "跳过", "标记", "笔记", "退出", "继续答题", "答题进度", "剩余时间",
-            "已用时", "正确率", "确认提交", "保存", "返回", "解析", "首页", "题库", "课程"
-    };
-
-    /** 去掉「上一题/提交/收藏」这类界面按钮文字，只把题目本身留给模型 */
-    private static String cleanScreenText(String raw) {
-        if (raw == null) return null;
-        StringBuilder sb = new StringBuilder();
-        String prev = null;
-        for (String line : raw.split("\n")) {
-            String t = line.trim();
-            if (t.isEmpty()) continue;
-            if (isNoiseLine(t)) continue;
-            String norm = normalizeOption(t);
-            if (norm.equals(prev)) continue;
-            sb.append(norm).append('\n');
-            prev = norm;
-        }
-        return sb.toString().trim();
-    }
-
-    private static boolean isNoiseLine(String t) {
-        if (t.matches("^\\d{1,2}:\\d{2}(:\\d{2})?$")) return true;
-        if (t.length() > 10) return false;
-        for (String w : NOISE) {
-            if (t.equals(w)) return true;
-        }
-        return false;
-    }
-
-    /** 「A、xxx」「A．xxx」统一成「A. xxx」，让选项更好认 */
-    private static String normalizeOption(String t) {
-        if (t.length() < 3) return t;
-        char c = t.charAt(0);
-        if (c < 'A' || c > 'H') return t;
-        char sep = t.charAt(1);
-        if (sep == '.' || sep == '、' || sep == '．' || sep == ')' || sep == '）') {
-            String body = t.substring(2).trim();
-            if (!body.isEmpty()) return c + ". " + body;
-        }
-        return t;
-    }
-
-    /** 屏幕上读到的文字够不够当题目用：太少说明只是按钮和栏目名，改回截图 */
-    private static boolean usableText(String s) {
-        if (s == null) return false;
-        int cjk = 0;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c >= 0x4E00 && c <= 0x9FFF) cjk++;
-        }
-        return cjk >= 20 && s.length() >= 40;
-    }
-
-    /** 自检：把当前屏幕读到的文字显示出来，判断是读屏不通还是题目本身就是图片 */
-    private void showReadText() {
-        final ShotService shot = ShotService.INSTANCE;
-        if (shot == null) {
-            toast("无障碍服务没开启");
-            return;
-        }
-        if (bubble != null) bubble.setVisibility(View.GONE);
-        if (panel != null) panel.setVisibility(View.GONE);
-        ui.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                String raw = shot.readScreenText();
-                String clean = cleanScreenText(raw);
-                if (bubble != null) bubble.setVisibility(View.VISIBLE);
-                showPanelBelowBubble();
-                if (panelTitle != null) panelTitle.setText("读屏自检");
-                int rawLen = raw == null ? 0 : raw.length();
-                int cleanLen = clean == null ? 0 : clean.length();
-                if (cleanLen == 0) {
-                    setPanelText("没读到文字（原始 " + rawLen + " 字）。\n\n"
-                            + "① 无障碍服务不是最新状态：去系统设置里关掉再打开一次；\n"
-                            + "② 题目是图片或画布（截图类刷题 App 常见），读屏本来就读不到；\n"
-                            + "③ 该 App 开了防截屏或隐私保护。\n\n"
-                            + "这种情况会继续走截图，答案质量取决于截图清晰度。");
-                } else {
-                    setPanelText("读屏原始 " + rawLen + " 字，清洗后 " + cleanLen + " 字：\n\n" + clean);
-                }
-                updateBadge(null);
-                fitPanelHeight();
-            }
-        }, 300);
     }
 
     /* ---------------- 追问 ---------------- */
@@ -1079,7 +939,6 @@ public class BubbleService extends Service {
 
     private boolean autoRunning = false;
     private byte[] lastSig;
-    private String lastAutoText = null;
 
     private final Runnable autoTick = new Runnable() {
         @Override
@@ -1099,7 +958,6 @@ public class BubbleService extends Service {
         if (autoRunning) return;
         autoRunning = true;
         lastSig = null;
-        lastAutoText = null;
         ui.postDelayed(autoTick, 900);
     }
 
@@ -1107,24 +965,13 @@ public class BubbleService extends Service {
         autoRunning = false;
         ui.removeCallbacks(autoTick);
         lastSig = null;
-        lastAutoText = null;
     }
 
-    /** 定时检查一次：文字模式直接比对文字，读不到文字才退回截图比对 */
+    /** 定时检查一次：截图比对，画面换了题才请求答案 */
     private void autoShot() {
         if (busy) return;
         final ShotService shot = ShotService.INSTANCE;
         if (shot == null || !Prefs.configured(this)) return;
-
-        final String text = cleanScreenText(shot.readScreenText());
-        if (usableText(text)) {
-            lastSig = null;
-            if (text.equals(lastAutoText)) return;
-            lastAutoText = text;
-            requestTextAnswer(text, "识别到新题目，正在解答…");
-            return;
-        }
-        lastAutoText = null;
 
         final boolean panelVisible = panel != null && panel.getVisibility() == View.VISIBLE;
         if (panelVisible) panel.setAlpha(0f);

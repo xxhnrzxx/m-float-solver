@@ -336,7 +336,7 @@ public class MainActivity extends Activity {
                 + "接口地址 https://api.deepseek.com/v1\n"
                 + "模型名 deepseek-flash\n\n"
                 + "用法：回到任何 App，点紫色「m」小球 → 屏幕自动截图并给出答案，答案浮在当前界面，可滚动、可复制、可拖到你喜欢的位置。\n"
-                + "长按小球 2 秒可关闭悬浮球。");
+                + "长按小球 1.5 秒可关闭悬浮球。");
         tip.setTextSize(12.5f);
         tip.setTextColor(0xFF7A809A);
         tip.setLineSpacing(dp(3), 1f);
@@ -378,13 +378,15 @@ public class MainActivity extends Activity {
                     meta.setTextColor(0xFF9AA0B4);
                     card.addView(meta);
 
-                    TextView qv = new TextView(MainActivity.this);
-                    qv.setText(q.isEmpty() ? "题目：（截图题，未存文字）" : "题目：" + cut(q, 90));
-                    qv.setTextSize(12.5f);
-                    qv.setTextColor(0xFF4A4F68);
-                    qv.setLineSpacing(dp(2), 1f);
-                    qv.setPadding(0, dp(3), 0, 0);
-                    card.addView(qv);
+                    if (!q.isEmpty()) {
+                        TextView qv = new TextView(MainActivity.this);
+                        qv.setText("题目：" + cut(q, 90));
+                        qv.setTextSize(12.5f);
+                        qv.setTextColor(0xFF4A4F68);
+                        qv.setLineSpacing(dp(2), 1f);
+                        qv.setPadding(0, dp(3), 0, 0);
+                        card.addView(qv);
+                    }
 
                     TextView av = new TextView(MainActivity.this);
                     av.setText("答案：" + cut(a, 120));
@@ -436,7 +438,7 @@ public class MainActivity extends Activity {
 
         root.addView(section("关于"));
         TextView ver = new TextView(this);
-        ver.setText("版本 3.0");
+        ver.setText("版本 3.1");
         ver.setTextSize(13f);
         ver.setTextColor(0xFF7A809A);
         root.addView(ver);
@@ -712,7 +714,7 @@ public class MainActivity extends Activity {
                         while ((line = br.readLine()) != null) sb.append(line);
                         br.close();
                         String tag = new org.json.JSONObject(sb.toString()).optString("tag_name", "");
-                        String now = "v3.0";
+                        String now = "v3.1";
                         if (tag.isEmpty()) {
                             result = "没读到版本号";
                         } else if (tag.equalsIgnoreCase(now)) {

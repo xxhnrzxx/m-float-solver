@@ -83,23 +83,6 @@ public class ChatClient {
         }
     }
 
-    /** 纯文字请求：屏幕上读到的题干和选项，比截图认字更准 */
-    public static void askText(final String baseUrl, final String model, final String apiKey,
-                               final String screenText, final boolean brief, final boolean answerOnly,
-                               final Sink sink) {
-        try {
-            JSONArray messages = new JSONArray();
-            messages.put(new JSONObject().put("role", "system")
-                    .put("content", answerOnly ? ONLY : (brief ? BRIEF : SYSTEM)));
-            messages.put(new JSONObject().put("role", "user").put("content",
-                    "这是当前手机屏幕上显示的全部文字（按界面从上到下排列），"
-                            + "请自己找出正在作答的题目并解答：\n\n" + screenText));
-            post(baseUrl, model, apiKey, messages, sink);
-        } catch (Throwable e) {
-            sink.onError(String.valueOf(e.getMessage()));
-        }
-    }
-
     /** 追问：带着同一道题的素材（截图或屏幕文字）和上一轮解答继续问 */
     public static void followUp(final String baseUrl, final String model, final String apiKey,
                                 final String imageDataUrl, final String screenText,
